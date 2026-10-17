@@ -38,6 +38,9 @@
   @if (!indexReady()) {
     <mat-progress-bar mode="determinate" [value]="indexProgress()" />
     <p class="muted">Indexing your games…</p>
+  } @else if (!drills.loaded()) {
+    <mat-progress-bar mode="indeterminate" />
+    <p class="muted">Loading your drill history…</p>
   } @else if (totalCards() === 0) {
     <p class="muted">No positions qualify yet. Lower the minimum games, or sync more games.</p>
   } @else if (!card()) {

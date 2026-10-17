@@ -41,8 +41,8 @@ const PAD = 4;
         </clipPath>
       </defs>
       <rect class="bg" x="0" y="0" [attr.width]="width" [attr.height]="height" />
-      <path class="area-white" [attr.d]="areaPath()" clip-path="url(#above)" />
-      <path class="area-black" [attr.d]="areaPath()" clip-path="url(#below)" />
+      <path class="area-white" [attr.d]="areaPath()" [attr.clip-path]="'url(#' + ids.above + ')'" />
+      <path class="area-black" [attr.d]="areaPath()" [attr.clip-path]="'url(#' + ids.below + ')'" />
       <line class="mid" x1="0" [attr.y1]="height / 2" [attr.x2]="width" [attr.y2]="height / 2" />
       <path class="line" [attr.d]="linePath()" />
       @for (m of marks(); track m.ply) {
@@ -54,7 +54,9 @@ const PAD = 4;
       }
     </svg>
     @if (hover(); as h) {
-      <div class="tooltip" [style.left.%]="(h.x / width) * 100">{{ h.label }}</div>
+      <div class="tooltip" [style.left.%]="Math.min(90, Math.max(10, (h.x / width) * 100))">
+        {{ h.label }}
+      </div>
     }
   `,
   styles: `
@@ -137,6 +139,12 @@ export class EvalGraphComponent {
 
   protected readonly width = W;
   protected readonly height = H;
+  protected readonly Math = Math;
+  /** Clip-path ids are document-global; make them unique per instance. */
+  protected readonly ids = (() => {
+    const token = Math.random().toString(36).slice(2, 8);
+    return { above: `eg-above-${token}`, below: `eg-below-${token}` };
+  })();
   protected readonly hover = signal<{ x: number; label: string } | null>(null);
 
   private readonly step = computed(() => W / Math.max(1, this.points().length - 1));

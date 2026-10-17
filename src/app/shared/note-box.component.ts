@@ -2,11 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   effect,
   inject,
   input,
   signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -22,6 +25,7 @@ const SAVE_DELAY_MS = 800;
     <mat-form-field appearance="outline" subscriptSizing="dynamic" class="note">
       <mat-label>{{ label() }}</mat-label>
       <textarea
+        #area
         matInput
         rows="2"
         [value]="draft()"
@@ -46,6 +50,7 @@ const SAVE_DELAY_MS = 800;
 })
 export class NoteBoxComponent {
   private readonly notes = inject(NotesService);
+  private readonly area = viewChild<ElementRef<HTMLTextAreaElement>>('area');
 
   readonly kind = input.required<NoteKind>();
   readonly target = input.required<string>();
@@ -54,22 +59,38 @@ export class NoteBoxComponent {
   protected readonly draft = signal('');
   protected readonly status = signal<string | null>(null);
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** The target whose draft has unsaved edits, if any. */
   private dirtyFor: string | null = null;
+  private shownTarget: string | null = null;
 
   private readonly stored = computed(() => this.notes.get(this.kind(), this.target())?.text ?? '');
 
   constructor() {
-    // When the target changes (or the note arrives from the cloud), show the stored text,
-    // unless the user is mid-edit on this very target.
     effect(() => {
       const target = this.target();
       const text = this.stored();
-      if (this.dirtyFor !== target) {
-        this.draft.set(text);
-        this.status.set(null);
-      }
+      untracked(() => {
+        if (target !== this.shownTarget) {
+          // New position or game: show its note, dropping nothing of value
+          // (edits for the previous target were flushed by the cleanup below).
+          this.shownTarget = target;
+          this.draft.set(text);
+          this.status.set(null);
+          return;
+        }
+        // Same target, stored text changed (our own save echoed back, or
+        // another device). Never clobber what the user is typing: the echo of
+        // a save differs from the draft only by trimmed whitespace.
+        const editing = this.dirtyFor === target || this.isFocused();
+        if (!editing && this.draft().trim() !== text) this.draft.set(text);
+      });
     });
     inject(DestroyRef).onDestroy(() => this.flush());
+  }
+
+  private isFocused(): boolean {
+    const el = this.area()?.nativeElement;
+    return !!el && typeof document !== 'undefined' && document.activeElement === el;
   }
 
   protected onInput(value: string): void {
@@ -80,6 +101,7 @@ export class NoteBoxComponent {
     this.timer = setTimeout(() => this.flush(), SAVE_DELAY_MS);
   }
 
+  /** Saves pending edits, if any. Safe to call at any time. */
   protected flush(): void {
     if (this.timer) {
       clearTimeout(this.timer);
@@ -88,12 +110,16 @@ export class NoteBoxComponent {
     const target = this.dirtyFor;
     if (target === null) return;
     this.dirtyFor = null;
+    const text = this.draft();
     void this.notes
-      .save(this.kind(), target, this.draft())
-      .then(() => this.status.set(this.draft().trim() ? 'Saved' : null))
+      .save(this.kind(), target, text)
+      .then((saved) => {
+        if (this.dirtyFor !== null || this.target() !== target) return;
+        this.status.set(saved ? (text.trim() ? 'Saved' : null) : 'Sign in to save notes');
+      })
       .catch((err: unknown) => {
         console.error('note save failed', err);
-        this.status.set('Could not save');
+        if (this.target() === target) this.status.set('Could not save');
       });
   }
 }

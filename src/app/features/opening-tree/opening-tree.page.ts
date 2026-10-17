@@ -117,6 +117,8 @@ export class OpeningTreePage {
 
   /** Optional `?line=e4,e5,Nf3` query parameter: open the explorer at this line. */
   readonly lineParam = input<string | undefined>(undefined, { alias: 'line' });
+  /** Optional `?color=black` query parameter accompanying `line`. */
+  readonly colorParam = input<string | undefined>(undefined, { alias: 'color' });
 
   /** Group games by position reached (merging transpositions) instead of by move order. */
   protected readonly mergeTranspositions = signal(true);
@@ -306,9 +308,11 @@ export class OpeningTreePage {
     void this.openings.load();
     effect(() => {
       const param = this.lineParam();
-      if (param === undefined) return;
+      const colorParam = this.colorParam();
+      if (typeof param !== 'string') return;
       const line = param.split(',').filter(Boolean);
       untracked(() => {
+        if (colorParam === 'white' || colorParam === 'black') this.color.set(colorParam);
         // Only accept a replayable line; otherwise start from the initial position.
         const chess = new Chess();
         const ok: string[] = [];
@@ -320,8 +324,6 @@ export class OpeningTreePage {
           }
         }
         this.line.set(ok);
-        // Make sure the tree is viewed from the side to move's opponent... no:
-        // the explorer stays on the user's chosen colour; the line is shared.
       });
     });
     // Build the position index for the current games in the background.
@@ -534,17 +536,14 @@ export class OpeningTreePage {
     this.line.update((l) => l.slice(0, ply));
   }
 
+  /** Changing colour keeps the line: the same position seen from the other side. */
   protected flip(): void {
     this.pendingPromotion.set(null);
     this.color.update((c) => (c === 'white' ? 'black' : 'white'));
-    this.line.set([]);
   }
 
   protected setColor(color: Color): void {
-    if (color !== this.color()) {
-      this.color.set(color);
-      this.line.set([]);
-    }
+    if (color !== this.color()) this.color.set(color);
   }
 
   protected setPerfs(change: MatChipListboxChange): void {

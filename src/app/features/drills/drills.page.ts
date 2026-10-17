@@ -190,12 +190,15 @@ export class DrillsPage {
 
   protected skip(): void {
     const card = this.card();
-    if (card) this.drills.seenThisSession.update((s) => new Set(s).add(card.key));
+    if (card) {
+      this.drills.skipped.update((s) => new Set(s).add(card.key));
+      this.drills.lastShown.set(card.key);
+    }
     this.card.set(null);
   }
 
   protected explorerParams(card: DrillCard): { [k: string]: string } {
-    return { line: card.line.join(',') };
+    return { line: card.line.join(','), color: card.color };
   }
 
   @HostListener('window:keydown', ['$event'])

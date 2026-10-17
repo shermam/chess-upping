@@ -18,8 +18,10 @@ export class DrillsService {
 
   readonly states = signal<ReadonlyMap<string, DrillState>>(new Map());
   readonly loaded = signal(false);
-  /** Keys answered in this session, so a card is not shown twice in a row. */
-  readonly seenThisSession = signal<ReadonlySet<string>>(new Set());
+  /** The card shown last, so the same card is not offered twice in a row. */
+  readonly lastShown = signal<string | null>(null);
+  /** Cards skipped in this session go to the back of the queue. */
+  readonly skipped = signal<ReadonlySet<string>>(new Set());
   readonly reviewedToday = computed(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -65,35 +67,47 @@ export class DrillsService {
     );
   }
 
-  /** Splits cards into due, new and scheduled for later. */
+  /**
+   * Splits cards into due, new and scheduled for later. Empty until the saved
+   * history has loaded, so a card is never shown (and its history overwritten)
+   * on stale state. Skipped cards sink to the back; the card shown last is
+   * held back while anything else is available.
+   */
   queue(
     cards: readonly DrillCard[],
     now = Date.now(),
   ): { due: DrillCard[]; fresh: DrillCard[]; later: number } {
+    if (!this.loaded()) return { due: [], fresh: [], later: 0 };
     const states = this.states();
-    const seen = this.seenThisSession();
+    const skipped = this.skipped();
+    const last = this.lastShown();
     const due: DrillCard[] = [];
     const fresh: DrillCard[] = [];
     let later = 0;
     for (const card of cards) {
       const s = states.get(card.key);
-      if (!s) {
-        if (!seen.has(card.key)) fresh.push(card);
-      } else if (s.due <= now) {
-        if (!seen.has(card.key)) due.push(card);
-      } else later++;
+      if (!s) fresh.push(card);
+      else if (s.due <= now) due.push(card);
+      else later++;
     }
     due.sort((a, b) => (states.get(a.key)?.due ?? 0) - (states.get(b.key)?.due ?? 0));
-    return { due, fresh, later };
+    if (due.length + fresh.length <= 1) return { due, fresh, later };
+    const order = (list: DrillCard[]) => [
+      ...list.filter((c) => c.key !== last && !skipped.has(c.key)),
+      ...list.filter((c) => c.key !== last && skipped.has(c.key)),
+      ...list.filter((c) => c.key === last),
+    ];
+    return { due: order(due), fresh: order(fresh), later };
   }
 
   async record(card: DrillCard, grade: Grade): Promise<void> {
+    if (!this.loaded()) return;
     const uid = this.auth.user()?.uid;
     const now = Date.now();
     const next = review(this.states().get(card.key) ?? null, card.key, grade, now);
     // Optimistic local update so the queue moves on immediately.
     this.states.update((m) => new Map(m).set(card.key, next));
-    this.seenThisSession.update((s) => new Set(s).add(card.key));
+    this.lastShown.set(card.key);
     if (!uid) return;
     try {
       await setDoc(doc(this.firebase.firestore, 'users', uid, 'drills', card.key), next);

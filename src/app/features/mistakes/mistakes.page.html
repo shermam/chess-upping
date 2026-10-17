@@ -102,7 +102,12 @@
                   }
                 </td>
                 <td>
-                  <a routerLink="/" [queryParams]="explorerLink(g.lineBefore)" matButton>Explore</a>
+                  <a
+                    routerLink="/"
+                    [queryParams]="explorerLink(g.lineBefore, g.items[0].color)"
+                    matButton
+                    >Explore</a
+                  >
                 </td>
               </tr>
             }
@@ -124,35 +129,37 @@
                 }
               </mat-panel-description>
             </mat-expansion-panel-header>
-            <table class="list">
-              <tbody>
-                @for (m of g.items; track m.game.id + m.ply) {
-                  <tr>
-                    <td>{{ m.game.createdAt | date: 'mediumDate' }}</td>
-                    <td>vs {{ m.color === 'white' ? m.game.black.name : m.game.white.name }}</td>
-                    <td>
-                      <span [class]="'chip ' + m.judgement"
-                        >{{ moveLabel(m) }} {{ symbol[m.judgement] }}</span
-                      >
-                    </td>
-                    <td class="num">−{{ m.drop | number: '1.0-0' }}%</td>
-                    <td>
-                      @if (bestSan(m); as best) {
-                        <span class="muted">best {{ best }}</span>
-                      }
-                    </td>
-                    <td>
-                      <a
-                        [routerLink]="['/games', m.game.id]"
-                        [queryParams]="{ ply: m.ply }"
-                        matButton
-                        >Review</a
-                      >
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
+            <ng-template matExpansionPanelContent>
+              <table class="list">
+                <tbody>
+                  @for (m of g.items; track m.game.id + m.ply) {
+                    <tr>
+                      <td>{{ m.game.createdAt | date: 'mediumDate' }}</td>
+                      <td>vs {{ m.color === 'white' ? m.game.black.name : m.game.white.name }}</td>
+                      <td>
+                        <span [class]="'chip ' + m.judgement"
+                          >{{ moveLabel(m) }} {{ symbol[m.judgement] }}</span
+                        >
+                      </td>
+                      <td class="num">−{{ m.drop | number: '1.0-0' }}%</td>
+                      <td>
+                        @if (m.bestSan; as best) {
+                          <span class="muted">best {{ best }}</span>
+                        }
+                      </td>
+                      <td>
+                        <a
+                          [routerLink]="['/games', m.game.id]"
+                          [queryParams]="{ ply: m.ply }"
+                          matButton
+                          >Review</a
+                        >
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </ng-template>
           </mat-expansion-panel>
         }
       </mat-accordion>

@@ -204,6 +204,19 @@ export class GamePage {
       const id = this.id();
       untracked(() => void this.load(id));
     });
+    // `?ply=` can change without the game changing (history navigation).
+    effect(() => {
+      this.plyParam();
+      const count = this.plies().length;
+      untracked(() => this.applyPlyParam(count));
+    });
+  }
+
+  private applyPlyParam(plyCount: number): void {
+    const param = this.plyParam();
+    if (typeof param !== 'string' || plyCount === 0) return;
+    const wanted = Number(param);
+    if (Number.isInteger(wanted) && wanted > 0) this.ply.set(Math.min(wanted, plyCount - 1));
   }
 
   private async load(id: string): Promise<void> {
@@ -218,8 +231,7 @@ export class GamePage {
     this.game.set(game ?? null);
     if (!game) return;
     const plies = replay(game);
-    const wanted = Number(this.plyParam());
-    if (Number.isInteger(wanted) && wanted > 0) this.ply.set(Math.min(wanted, plies.length - 1));
+    this.applyPlyParam(plies.length);
     await this.evaluateAll(plies, request, abort.signal);
   }
 

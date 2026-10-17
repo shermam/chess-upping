@@ -15,7 +15,6 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { RouterLink } from '@angular/router';
-import { Chess } from 'chess.js';
 import { UserProfileService } from '../../core/auth/user-profile.service';
 import { GamesStoreService } from '../../core/data/games-store.service';
 import { Mistake, MistakeFinderService } from '../../core/data/mistake-finder.service';
@@ -132,13 +131,16 @@ export class MistakesPage {
   });
 
   constructor() {
-    // Analyse automatically once games are available, and again when they change.
+    // Analyse when the games change (or on first visit); a change that lands
+    // while a run is in progress starts a fresh run right after it.
     effect(() => {
       const games = this.store.games();
       const link = this.profiles.profile()?.lichess;
+      const running = this.finder.running();
       if (games.length === 0 || !link) return;
       untracked(() => {
-        if (!this.finder.running()) void this.finder.analyse(games, link.id);
+        if (running || this.finder.isCurrent(games, link.id)) return;
+        void this.finder.analyse(games, link.id);
       });
     });
   }
@@ -149,27 +151,12 @@ export class MistakesPage {
     if (games.length > 0 && link) void this.finder.analyse(games, link.id);
   }
 
-  protected bestSan(m: Mistake): string | null {
-    if (!m.bestMove) return null;
-    try {
-      const chess = new Chess();
-      for (const san of m.lineBefore) chess.move(san);
-      return chess.move({
-        from: m.bestMove.slice(0, 2),
-        to: m.bestMove.slice(2, 4),
-        promotion: m.bestMove[4],
-      }).san;
-    } catch {
-      return null;
-    }
-  }
-
   protected moveLabel(m: Mistake): string {
     return `${Math.ceil(m.ply / 2)}${m.ply % 2 ? '.' : '…'} ${m.san}`;
   }
 
-  protected explorerLink(line: string[]): { [k: string]: string } {
-    return { line: line.join(',') };
+  protected explorerLink(line: string[], color: Color): { [k: string]: string } {
+    return { line: line.join(','), color };
   }
 
   protected judgementClass(j: Judgement): string {

@@ -86,10 +86,10 @@ export class NotesService {
     );
   }
 
-  /** Saves the text; an empty text deletes the note. */
-  async save(kind: NoteKind, target: string, text: string): Promise<void> {
+  /** Saves the text (an empty text deletes the note). Returns false when signed out. */
+  async save(kind: NoteKind, target: string, text: string): Promise<boolean> {
     const uid = this.auth.user()?.uid;
-    if (!uid) return;
+    if (!uid) return false;
     const ref = doc(
       this.firebase.firestore,
       'users',
@@ -100,8 +100,9 @@ export class NotesService {
     const trimmed = text.trim();
     if (!trimmed) {
       await deleteDoc(ref);
-      return;
+      return true;
     }
     await setDoc(ref, { kind, target, text: trimmed, updatedAt: serverTimestamp() });
+    return true;
   }
 }
