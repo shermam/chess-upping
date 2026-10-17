@@ -1,0 +1,71 @@
+@if (firebase.initError(); as message) {
+  <main class="init-error">
+    <h1>Chess Upping could not start</h1>
+    <p>Firebase configuration failed to load: {{ message }}</p>
+    <p>
+      When running locally, start the app with <code>npm start</code> so the dev server proxies
+      <code>/__/firebase/init.json</code> to Firebase Hosting.
+    </p>
+  </main>
+} @else {
+  <mat-toolbar class="toolbar">
+    <a routerLink="/" class="brand">
+      <mat-icon>chess</mat-icon>
+      <span>Chess Upping</span>
+    </a>
+    <span class="spacer"></span>
+    @if (user(); as u) {
+      @if (link(); as l) {
+        <span
+          class="sync"
+          [class.error]="sync.phase() === 'error'"
+          [class.warning]="sync.phase() === 'done' && !!sync.warning()"
+          [matTooltip]="sync.error() ?? sync.warning() ?? ''"
+        >
+          @if (sync.busy()) {
+            <mat-icon class="spin">sync</mat-icon>
+          } @else if (sync.phase() === 'error') {
+            <mat-icon>sync_problem</mat-icon>
+          } @else if (sync.phase() === 'done' && sync.warning()) {
+            <mat-icon>warning</mat-icon>
+          }
+          {{ syncLabel() }}
+        </span>
+        <button
+          matIconButton
+          (click)="syncNow()"
+          [disabled]="sync.busy()"
+          matTooltip="Sync with Lichess"
+        >
+          <mat-icon>refresh</mat-icon>
+        </button>
+      }
+      <button matIconButton [matMenuTriggerFor]="userMenu" aria-label="Account">
+        @if (u.photoURL) {
+          <img class="avatar" [src]="u.photoURL" alt="" referrerpolicy="no-referrer" />
+        } @else {
+          <mat-icon>account_circle</mat-icon>
+        }
+      </button>
+      <mat-menu #userMenu="matMenu">
+        <div class="menu-header">
+          <div>{{ u.displayName || u.email }}</div>
+          @if (link(); as l) {
+            <div class="menu-sub">Lichess: {{ l.username }}</div>
+          }
+        </div>
+        @if (link()) {
+          <button mat-menu-item (click)="unlinkLichess()">
+            <mat-icon>link_off</mat-icon>
+            <span>Disconnect Lichess</span>
+          </button>
+        }
+        <button mat-menu-item (click)="signOut()">
+          <mat-icon>logout</mat-icon>
+          <span>Sign out</span>
+        </button>
+      </mat-menu>
+    }
+  </mat-toolbar>
+  <router-outlet />
+}

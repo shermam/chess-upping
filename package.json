@@ -1,0 +1,49 @@
+{
+  "name": "chess-upping",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "firebase:deploy": "npm run build && firebase deploy --only hosting,firestore",
+    "firebase:preview": "npm run build && firebase hosting:channel:deploy preview --expires 7d",
+    "rules:test:runner": "vitest run --config vitest.rules.config.mts",
+    "rules:test": "firebase emulators:exec --project demo-chess-upping-rules --only firestore \"npm run rules:test:runner\""
+  },
+  "private": true,
+  "packageManager": "npm@11.19.1",
+  "dependencies": {
+    "@angular/cdk": "^22.2.3",
+    "@angular/common": "^22.2.0",
+    "@angular/compiler": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/material": "^22.2.3",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "chess.js": "^1.4.0",
+    "chessground": "^9.2.1",
+    "dexie": "^4.4.6",
+    "firebase": "^13.0.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.2.3",
+    "@angular/cli": "^22.2.3",
+    "@angular/compiler-cli": "^22.2.0",
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase-tools": "^15.34.0",
+    "jsdom": "^30.0.0",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.2",
+    "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

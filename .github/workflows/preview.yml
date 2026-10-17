@@ -1,0 +1,38 @@
+name: Deploy preview channel
+
+# Builds each pull request and deploys it to a temporary Hosting preview
+# channel; the action comments the URL on the PR. Secrets are not available to
+# pull requests from forks, so this only runs for branches in this repository.
+#
+# Google sign-in on a preview URL works only after that host is added to
+# Authentication > Settings > Authorized domains in the Firebase console.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHESS_UPPING }}
+          projectId: chess-upping
+          expires: 7d
