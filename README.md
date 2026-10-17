@@ -44,6 +44,14 @@ Live site: https://chess-upping.web.app
   Engine page evaluates every game you played in the background, resuming
   where it stopped. Lookups go local store, then cloud, then engine, so a
   position is never searched twice.
+- **Study.** The game viewer judges every move from the stored evaluations
+  (inaccuracy ?!, mistake ?, blunder ??, with an accuracy figure and an eval
+  graph). The Mistakes page gathers them across all games, grouped by opening
+  and by repeated position, each linking back to the game at that move or to
+  the explorer at that line. Drills turn the user's habitual moves into
+  spaced-repetition cards (slowest first); progress lives under the user's
+  private `drills` subcollection. Private notes can be kept on any position
+  or game (`users/{uid}/notes`).
 - **Firebase config** is never committed. The app fetches it at runtime from
   Hosting's reserved `/__/firebase/init.json`.
 
@@ -55,7 +63,7 @@ src/app/core/auth         Google sign-in, route guard, user profile document
 src/app/core/lichess      OAuth PKCE, Lichess API client, NDJSON game parsing
 src/app/core/data         IndexedDB store, Firestore games repository, sync
 src/app/core/engine       Stockfish worker wrapper, UCI parsing, worker pool
-src/app/features          Pages: opening tree (with board), game viewer, engine, login, callback
+src/app/features          Pages: opening tree, game viewer, mistakes, drills, engine, login, callback
 firestore.rules           Security rules; firestore.indexes.json the composite index
 .github/workflows         CI, preview channels on PRs, live deploy on main
 docs/BACKLOG.md           Features to build next
@@ -86,6 +94,10 @@ connects Auth and Firestore to the running emulators automatically (this also
 applies to `npm start` while the emulators are up). This needs Java for the Firestore emulator and credentials that can read the
 project's web app config (`GOOGLE_APPLICATION_CREDENTIALS` pointing at a
 service account key, or `firebase login`).
+
+The toolbar shows the short commit hash of the running build. It comes from
+`src/app/version.generated.ts`, written by `scripts/write-version.mjs` before
+every build, serve and test run (the file is not committed).
 
 Other scripts:
 

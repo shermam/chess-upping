@@ -84,3 +84,10 @@
   height: 18px;
   margin-left: 4px;
 }
+
+.version {
+  font: var(--mat-sys-label-small);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--mat-sys-on-surface-variant);
+  margin-right: 8px;
+}

@@ -20,6 +20,7 @@ import { LocalDbService } from './core/data/local-db.service';
 import { PositionIndexService } from './core/data/position-index.service';
 import { SyncService } from './core/data/sync.service';
 import { FirebaseService } from './core/firebase/firebase.service';
+import { APP_VERSION } from './version.generated';
 
 @Component({
   selector: 'app-root',
@@ -49,6 +50,7 @@ export class App {
   private readonly router = inject(Router);
 
   protected readonly user = this.auth.user;
+  protected readonly version = APP_VERSION;
   protected readonly link = computed(() => this.profiles.profile()?.lichess ?? null);
   protected readonly syncLabel = computed(() => {
     switch (this.sync.phase()) {

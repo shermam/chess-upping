@@ -57,11 +57,16 @@ bar per move, average thinking time per move.
 
 ## Study features
 
-- Per-user annotations on positions and games (private, under `users/{uid}`).
-- Mistake finder: positions where the stored engine eval drops sharply after
-  the user's move, grouped by opening.
-- Spaced-repetition drills built from the user's own opening lines.
-- Game viewer with move list, eval bar and navigation (shared with the tree).
+Done: private notes on positions and games, mistake finder grouped by opening
+and by repeated position, move judgements and accuracy in the viewer, eval
+graph, spaced-repetition drills built from the user's own habitual moves.
+
+- Drill answers graded against the engine too: a different move that the
+  engine rates as good should not count as a lapse.
+- Drill sets built from mistakes (replay the position where a blunder
+  happened and find the better move).
+- Per-game accuracy trend over time.
+- Export notes and drill history.
 
 ## Engineering
 

@@ -61,6 +61,23 @@ describe('users/{uid}', () => {
   });
 });
 
+describe('users/{uid}/notes', () => {
+  it('is private to the owner', async () => {
+    const alice = env.authenticatedContext(ALICE).firestore();
+    const bob = env.authenticatedContext(BOB).firestore();
+    await assertSucceeds(
+      setDoc(doc(alice, 'users', ALICE, 'notes', 'p:x'), {
+        kind: 'position',
+        target: 'x',
+        text: 'hi',
+      }),
+    );
+    await assertSucceeds(getDoc(doc(alice, 'users', ALICE, 'notes', 'p:x')));
+    await assertFails(getDoc(doc(bob, 'users', ALICE, 'notes', 'p:x')));
+    await assertFails(setDoc(doc(bob, 'users', ALICE, 'notes', 'p:y'), { text: 'no' }));
+  });
+});
+
 describe('games/{id}', () => {
   it('lets a signed-in user create a well-formed game once, and anyone signed in read it', async () => {
     const alice = env.authenticatedContext(ALICE).firestore();

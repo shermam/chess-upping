@@ -3,3 +3,4 @@ node_modules
 .angular
 package-lock.json
 public/openings.json
+src/app/version.generated.ts

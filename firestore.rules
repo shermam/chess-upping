@@ -76,9 +76,14 @@ service cloud.firestore {
         && e.uploadedAt == request.time;
     }
 
-    // Per-user private data: profile, Lichess link and token, later annotations.
+    // Per-user private data: profile, Lichess link and token, and private
+    // subcollections (notes, drill schedules).
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
+
+      match /{document=**} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
     }
 
     // Public chess games, shared by everyone. Lichess games are immutable, so a

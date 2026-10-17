@@ -82,8 +82,19 @@
           <mat-icon>last_page</mat-icon>
         </button>
       </div>
+      <app-eval-graph [points]="graphPoints()" [current]="ply()" (plySelect)="goTo($event)" />
       <div class="engine">
-        <div class="score">{{ evalText() }}</div>
+        <div class="score">
+          {{ evalText() }}
+          @if (current(); as c) {
+            @if (badgeFor(c); as badge) {
+              <span [class]="'badge ' + judgementFor(c)">{{ badge }}</span>
+            }
+          }
+        </div>
+        @if (accuracyText(); as acc) {
+          <div class="muted">Accuracy (white / black): {{ acc }}</div>
+        }
         @if (currentEval(); as e) {
           <div class="muted">
             depth {{ e.depth === 99 ? 'final' : e.depth }}
@@ -106,6 +117,10 @@
     </div>
 
     <div class="moves-column">
+      <app-note-box kind="game" [target]="g.id" label="Notes on this game" />
+      @if (current(); as c) {
+        <app-note-box kind="position" [target]="c.key" label="Notes on this position" />
+      }
       <table class="moves">
         <tbody>
           <tr>
@@ -125,7 +140,10 @@
                   [class.active]="ply() === row.white.ply"
                   (click)="goTo(row.white.ply)"
                 >
-                  {{ row.white.san }}
+                  {{ row.white.san
+                  }}<span [class]="'badge ' + judgementFor(row.white)">{{
+                    badgeFor(row.white)
+                  }}</span>
                 </button>
               </td>
               <td class="eval">{{ evalFor(row.white) }}</td>
@@ -136,7 +154,10 @@
                     [class.active]="ply() === row.black.ply"
                     (click)="goTo(row.black.ply)"
                   >
-                    {{ row.black.san }}
+                    {{ row.black.san
+                    }}<span [class]="'badge ' + judgementFor(row.black)">{{
+                      badgeFor(row.black)
+                    }}</span>
                   </button>
                 }
               </td>

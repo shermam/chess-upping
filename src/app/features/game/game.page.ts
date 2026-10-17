@@ -25,6 +25,9 @@ import { OpeningsService } from '../../core/openings/openings.service';
 import { Color, Game, PERF_LABELS } from '../../models/game';
 import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
 import { BoardComponent } from '../opening-tree/board.component';
+import { EvalGraphComponent, EvalPoint } from './eval-graph.component';
+import { NoteBoxComponent } from '../../shared/note-box.component';
+import { JUDGEMENT_SYMBOL, JudgedMove, accuracy, judgeMoves } from '../../models/analysis';
 
 interface Ply {
   /** 0 for the start position, then 1..n after each move. */
@@ -86,6 +89,8 @@ function uciToSan(fen: string, uci: string[]): string[] {
     MatTooltipModule,
     RouterLink,
     BoardComponent,
+    EvalGraphComponent,
+    NoteBoxComponent,
   ],
   templateUrl: './game.page.html',
   styleUrl: './game.page.scss',
@@ -111,6 +116,30 @@ export class GamePage {
 
   /** Route parameter, bound by `withComponentInputBinding`. */
   readonly id = input.required<string>();
+  /** Optional `?ply=` query parameter: the move to open the game at. */
+  readonly plyParam = input<string | undefined>(undefined, { alias: 'ply' });
+
+  protected readonly symbol = JUDGEMENT_SYMBOL;
+  /** Judged moves keyed by ply, from the evaluations gathered so far. */
+  protected readonly judged = computed(() => {
+    const map = new Map<number, JudgedMove>();
+    for (const m of judgeMoves(this.plies(), this.evalMap())) map.set(m.ply, m);
+    return map;
+  });
+  protected readonly accuracyText = computed(() => {
+    const moves = [...this.judged().values()];
+    const w = accuracy(moves, 'white');
+    const b = accuracy(moves, 'black');
+    return w === null && b === null ? null : `${w ?? '–'}% / ${b ?? '–'}%`;
+  });
+  protected readonly graphPoints = computed<EvalPoint[]>(() =>
+    this.plies().map((p) => ({
+      ply: p.ply,
+      san: p.san,
+      eval: this.evalMap().get(p.key) ?? null,
+      judgement: this.judged().get(p.ply)?.judgement ?? null,
+    })),
+  );
 
   protected readonly game = signal<Game | null | undefined>(undefined);
   protected readonly plies = computed(() => {
@@ -175,6 +204,19 @@ export class GamePage {
       const id = this.id();
       untracked(() => void this.load(id));
     });
+    // `?ply=` can change without the game changing (history navigation).
+    effect(() => {
+      this.plyParam();
+      const count = this.plies().length;
+      untracked(() => this.applyPlyParam(count));
+    });
+  }
+
+  private applyPlyParam(plyCount: number): void {
+    const param = this.plyParam();
+    if (typeof param !== 'string' || plyCount === 0) return;
+    const wanted = Number(param);
+    if (Number.isInteger(wanted) && wanted > 0) this.ply.set(Math.min(wanted, plyCount - 1));
   }
 
   private async load(id: string): Promise<void> {
@@ -188,7 +230,9 @@ export class GamePage {
     if (request !== this.loadRequest) return;
     this.game.set(game ?? null);
     if (!game) return;
-    await this.evaluateAll(replay(game), request, abort.signal);
+    const plies = replay(game);
+    this.applyPlyParam(plies.length);
+    await this.evaluateAll(plies, request, abort.signal);
   }
 
   private async evaluateAll(plies: Ply[], request: number, signal: AbortSignal): Promise<void> {
@@ -221,6 +265,15 @@ export class GamePage {
   protected evalFor(p: Ply): string {
     const e = this.evalMap().get(p.key);
     return e ? formatEval(e) : '';
+  }
+
+  protected judgementFor(p: Ply): string {
+    return this.judged().get(p.ply)?.judgement ?? '';
+  }
+
+  protected badgeFor(p: Ply): string {
+    const j = this.judged().get(p.ply)?.judgement;
+    return j ? JUDGEMENT_SYMBOL[j] : '';
   }
 
   protected goTo(ply: number): void {

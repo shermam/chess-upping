@@ -22,6 +22,8 @@
           [routerLinkActiveOptions]="{ exact: true }"
           >Explorer</a
         >
+        <a matButton routerLink="/mistakes" routerLinkActive="active">Mistakes</a>
+        <a matButton routerLink="/drills" routerLinkActive="active">Drills</a>
         <a matButton routerLink="/engine" routerLinkActive="active">
           Engine
           @if (bulk.phase() === 'running' || bulk.phase() === 'stopping') {
@@ -31,6 +33,9 @@
       </nav>
     }
     <span class="spacer"></span>
+    <span class="version" [matTooltip]="'Build ' + version.commit + ' · ' + version.builtAt">
+      {{ version.commit }}
+    </span>
     @if (user(); as u) {
       @if (link(); as l) {
         <span

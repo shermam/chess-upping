@@ -6,6 +6,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
   untracked,
 } from '@angular/core';
@@ -38,6 +39,7 @@ import { LichessAuthService } from '../../core/lichess/lichess-auth.service';
 import { Color, PERF_LABELS, STANDARD_PERFS } from '../../models/game';
 import { formatSeconds } from '../../models/move-times';
 import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
+import { NoteBoxComponent } from '../../shared/note-box.component';
 import { BoardComponent, BoardMove } from './board.component';
 import {
   DEFAULT_FILTERS,
@@ -96,6 +98,7 @@ const GAME_LIST_LIMIT = 50;
     MatTooltipModule,
     RouterLink,
     BoardComponent,
+    NoteBoxComponent,
   ],
   templateUrl: './opening-tree.page.html',
   styleUrl: './opening-tree.page.scss',
@@ -111,6 +114,11 @@ export class OpeningTreePage {
   private readonly openings = inject(OpeningsService);
   private readonly explorer = inject(LichessExplorerService);
   protected readonly sync = inject(SyncService);
+
+  /** Optional `?line=e4,e5,Nf3` query parameter: open the explorer at this line. */
+  readonly lineParam = input<string | undefined>(undefined, { alias: 'line' });
+  /** Optional `?color=black` query parameter accompanying `line`. */
+  readonly colorParam = input<string | undefined>(undefined, { alias: 'color' });
 
   /** Group games by position reached (merging transpositions) instead of by move order. */
   protected readonly mergeTranspositions = signal(true);
@@ -298,6 +306,26 @@ export class OpeningTreePage {
 
   constructor() {
     void this.openings.load();
+    effect(() => {
+      const param = this.lineParam();
+      const colorParam = this.colorParam();
+      if (typeof param !== 'string') return;
+      const line = param.split(',').filter(Boolean);
+      untracked(() => {
+        if (colorParam === 'white' || colorParam === 'black') this.color.set(colorParam);
+        // Only accept a replayable line; otherwise start from the initial position.
+        const chess = new Chess();
+        const ok: string[] = [];
+        for (const san of line) {
+          try {
+            ok.push(chess.move(san).san);
+          } catch {
+            break;
+          }
+        }
+        this.line.set(ok);
+      });
+    });
     // Build the position index for the current games in the background.
     effect(() => {
       const games = this.store.games();
@@ -508,17 +536,14 @@ export class OpeningTreePage {
     this.line.update((l) => l.slice(0, ply));
   }
 
+  /** Changing colour keeps the line: the same position seen from the other side. */
   protected flip(): void {
     this.pendingPromotion.set(null);
     this.color.update((c) => (c === 'white' ? 'black' : 'white'));
-    this.line.set([]);
   }
 
   protected setColor(color: Color): void {
-    if (color !== this.color()) {
-      this.color.set(color);
-      this.line.set([]);
-    }
+    if (color !== this.color()) this.color.set(color);
   }
 
   protected setPerfs(change: MatChipListboxChange): void {
