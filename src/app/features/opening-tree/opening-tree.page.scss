@@ -15,7 +15,17 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 16px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  &.secondary {
+    margin-bottom: 16px;
+  }
+}
+
+.compact {
+  width: 170px;
+  &.rating {
+    width: 150px;
+  }
 }
 
 .spacer {
@@ -209,4 +219,44 @@ a mat-icon {
   a + a {
     margin-left: 8px;
   }
+}
+
+.eval-bar {
+  position: relative;
+  display: flex;
+  height: 20px;
+  width: 110px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #403d39;
+  border: 1px solid #c8c8c8;
+  font: var(--mat-sys-label-small);
+  .white-side {
+    background: #fff;
+    height: 100%;
+    transition: width 200ms ease;
+  }
+  .eval-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #222;
+    font-variant-numeric: tabular-nums;
+    &.on-dark {
+      color: #fff;
+    }
+  }
+  &.pending {
+    background: var(--mat-sys-surface-container-high);
+    border-color: transparent;
+  }
+}
+
+.moves tbody tr.good .san-cell {
+  color: #2e7d32;
+}
+.moves tbody tr.poor .san-cell {
+  color: #c62828;
 }

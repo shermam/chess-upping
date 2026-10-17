@@ -4,7 +4,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 
@@ -31,6 +31,7 @@ function game(overrides: Record<string, unknown> = {}) {
     opening: { eco: 'C44', name: "King's Knight Opening", ply: 4 },
     clock: { initial: 300, increment: 3 },
     source: 'pool',
+    clocks: [30000, 30000, 29800, 29500],
     uploadedBy: ALICE,
     uploadedAt: serverTimestamp(),
     ...overrides,
@@ -70,6 +71,33 @@ describe('games/{id}', () => {
     // Immutable: neither player can change or re-create it.
     await assertFails(setDoc(doc(bob, 'games', 'game0001'), game({ uploadedBy: BOB })));
     await assertFails(setDoc(doc(alice, 'games', 'game0001'), game({ winner: 'black' })));
+  });
+
+  it('allows adding clocks to a game stored without them, and nothing else', async () => {
+    const alice = env.authenticatedContext(ALICE).firestore();
+    const bob = env.authenticatedContext(BOB).firestore();
+    await assertSucceeds(setDoc(doc(alice, 'games', 'game0001'), game({ clocks: null })));
+    const stamp = { uploadedBy: BOB, uploadedAt: serverTimestamp() };
+    await assertFails(
+      updateDoc(doc(bob, 'games', 'game0001'), { clocks: [1, 2], winner: 'black', ...stamp }),
+    );
+    await assertFails(updateDoc(doc(bob, 'games', 'game0001'), { clocks: 'x', ...stamp }));
+    await assertFails(
+      updateDoc(doc(bob, 'games', 'game0001'), {
+        clocks: [1, 2],
+        uploadedBy: ALICE,
+        uploadedAt: serverTimestamp(),
+      }),
+    );
+    await assertSucceeds(updateDoc(doc(bob, 'games', 'game0001'), { clocks: [1, 2], ...stamp }));
+    // Once present, clocks are final.
+    await assertFails(
+      updateDoc(doc(alice, 'games', 'game0001'), {
+        clocks: [3, 4],
+        uploadedBy: ALICE,
+        uploadedAt: serverTimestamp(),
+      }),
+    );
   });
 
   it('accepts a full batch of 500 games', async () => {

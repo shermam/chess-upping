@@ -56,6 +56,28 @@ export class LocalDbService {
     });
   }
 
+  /**
+   * Adds clock data to games already stored without it and flags them for
+   * upload. Games not stored yet are inserted. Returns how many rows changed.
+   */
+  async mergeClocks(games: Game[]): Promise<number> {
+    if (games.length === 0) return 0;
+    return this.db.transaction('rw', this.db.games, async () => {
+      const existing = await this.db.games.bulkGet(games.map((g) => g.id));
+      const updates: LocalGame[] = [];
+      const inserts: LocalGame[] = [];
+      games.forEach((g, i) => {
+        const row = existing[i];
+        if (!row) inserts.push({ ...g, pendingUpload: 1 });
+        else if (row.clocks === null && g.clocks !== null) {
+          updates.push({ ...row, clocks: g.clocks, pendingUpload: 1 });
+        }
+      });
+      await this.db.games.bulkPut([...inserts, ...updates]);
+      return inserts.length + updates.length;
+    });
+  }
+
   getGame(id: string): Promise<LocalGame | undefined> {
     return this.db.games.get(id);
   }

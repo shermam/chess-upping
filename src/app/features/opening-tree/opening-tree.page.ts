@@ -13,7 +13,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipListboxChange, MatChipsModule } from '@angular/material/chips';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
@@ -26,9 +29,39 @@ import { SyncService } from '../../core/data/sync.service';
 import { EnginePoolService } from '../../core/engine/engine-pool.service';
 import { LichessAuthService } from '../../core/lichess/lichess-auth.service';
 import { Color, PERF_LABELS, STANDARD_PERFS } from '../../models/game';
-import { PositionEval, formatEval, positionKey } from '../../models/position-eval';
+import { formatSeconds } from '../../models/move-times';
+import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
 import { BoardComponent, BoardMove } from './board.component';
-import { TreeFilters, gamesAtLine, nextMoveStats, percent, prepareGames, tally } from './tree';
+import {
+  DEFAULT_FILTERS,
+  MoveStats,
+  ResultFilter,
+  SortBy,
+  TreeFilters,
+  gamesAtLine,
+  nextMoveStats,
+  percent,
+  prepareGames,
+  scoreClass,
+  sortStats,
+  tally,
+} from './tree';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const PERIOD_OPTIONS = [
+  { value: 0, label: 'All time' },
+  { value: 30, label: 'Last month' },
+  { value: 90, label: 'Last 3 months' },
+  { value: 180, label: 'Last 6 months' },
+  { value: 365, label: 'Last year' },
+  { value: 730, label: 'Last 2 years' },
+] as const;
+export const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: 'games', label: 'Most played' },
+  { value: 'score', label: 'Best score' },
+  { value: 'recent', label: 'Most recent' },
+  { value: 'time', label: 'Slowest' },
+];
 
 const GAME_LIST_LIMIT = 50;
 
@@ -41,7 +74,10 @@ const GAME_LIST_LIMIT = 50;
     MatButtonToggleModule,
     MatCardModule,
     MatChipsModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
+    MatSelectModule,
     MatProgressBarModule,
     MatTooltipModule,
     RouterLink,
@@ -83,7 +119,12 @@ export class OpeningTreePage {
 
   protected readonly perfOptions = STANDARD_PERFS;
   protected readonly perfLabels = PERF_LABELS;
+  protected readonly periodOptions = PERIOD_OPTIONS;
+  protected readonly sortOptions = SORT_OPTIONS;
   protected readonly percent = percent;
+  protected readonly formatSeconds = formatSeconds;
+  protected readonly formatEval = formatEval;
+  protected readonly whiteWinChance = whiteWinChance;
 
   protected readonly link = computed(() => this.profiles.profile()?.lichess ?? null);
   protected readonly profileLoading = computed(() => this.profiles.profile() === undefined);
@@ -92,20 +133,41 @@ export class OpeningTreePage {
   protected readonly color = signal<Color>('white');
   protected readonly perfs = signal<ReadonlySet<string>>(new Set());
   protected readonly rated = signal<TreeFilters['rated']>('all');
+  protected readonly result = signal<ResultFilter>('all');
+  protected readonly periodDays = signal<number>(0);
+  protected readonly ratingMin = signal<number | null>(null);
+  protected readonly ratingMax = signal<number | null>(null);
+  protected readonly sortBy = signal<SortBy>('games');
   protected readonly line = signal<string[]>([]);
 
   private readonly prepared = computed(() => {
     const link = this.link();
     if (!link) return [];
+    const days = this.periodDays();
     return prepareGames(this.store.games(), link.id, {
+      ...DEFAULT_FILTERS,
       color: this.color(),
       perfs: this.perfs(),
       rated: this.rated(),
+      result: this.result(),
+      since: days > 0 ? Date.now() - days * DAY_MS : null,
+      ratingMin: this.ratingMin(),
+      ratingMax: this.ratingMax(),
     });
   });
   protected readonly atLine = computed(() => gamesAtLine(this.prepared(), this.line()));
   protected readonly totals = computed(() => tally(this.atLine()));
-  protected readonly stats = computed(() => nextMoveStats(this.atLine(), this.line().length));
+  protected readonly stats = computed(() =>
+    sortStats(nextMoveStats(this.atLine(), this.line().length), this.sortBy()),
+  );
+  /** Whether the user is the one to move at the current node. */
+  protected readonly userToMove = computed(
+    () => (this.line().length % 2 === 0) === (this.color() === 'white'),
+  );
+  protected readonly timeLabel = computed(() => (this.userToMove() ? 'Your time' : 'Their time'));
+  /** Engine evaluations of the positions after each candidate move, keyed by SAN. */
+  protected readonly candidateEvals = signal<ReadonlyMap<string, PositionEval>>(new Map());
+  private candidateRequest = 0;
   protected readonly recentGames = computed(() => this.atLine().slice(0, GAME_LIST_LIMIT));
   protected readonly filteredCount = computed(() => this.prepared().length);
 
@@ -166,7 +228,10 @@ export class OpeningTreePage {
     effect((onCleanup) => {
       const fen = this.fen();
       const linked = !!this.link();
-      untracked(() => this.positionEval.set(null));
+      untracked(() => {
+        this.positionEval.set(null);
+        this.candidateEvals.set(new Map());
+      });
       if (!linked) return;
       const timer = setTimeout(() => void this.evaluateCurrent(fen), 250);
       onCleanup(() => clearTimeout(timer));
@@ -182,6 +247,53 @@ export class OpeningTreePage {
     } catch (err) {
       console.warn('position evaluation failed', err);
     }
+    void this.evaluateCandidates(fen, request);
+  }
+
+  /** Evaluates the position after each move in the table, filling the eval column as results arrive. */
+  private async evaluateCandidates(fen: string, request: number): Promise<void> {
+    const candidateRequest = ++this.candidateRequest;
+    const sans = this.stats().map((s) => s.san);
+    const fenBySan = new Map<string, string>();
+    for (const san of sans) {
+      try {
+        const chess = new Chess(fen);
+        chess.move(san);
+        fenBySan.set(san, chess.fen());
+      } catch {
+        // A move the engine's FEN cannot replay: leave its eval blank.
+      }
+    }
+    const sanByKey = new Map([...fenBySan].map(([san, f]) => [positionKey(f), san]));
+    if (fenBySan.size === 0 || request !== this.evalRequest) return;
+    const found = new Map<string, PositionEval>();
+    try {
+      await this.evals.getOrEvaluate([...fenBySan.values()], this.pool.depth(), 'low', {
+        onResult: (e) => {
+          if (candidateRequest !== this.candidateRequest) return;
+          const san = sanByKey.get(e.key);
+          if (!san) return;
+          found.set(san, e);
+          this.candidateEvals.set(new Map(found));
+        },
+      });
+    } catch (err) {
+      console.warn('candidate evaluation failed', err);
+    }
+  }
+
+  protected scoreClassFor(row: MoveStats): string {
+    return scoreClass(row, this.totals()) ?? '';
+  }
+
+  protected setResult(result: ResultFilter): void {
+    this.result.set(result);
+  }
+
+  protected setRating(which: 'min' | 'max', value: string): void {
+    const n = value.trim() === '' ? null : Number(value);
+    const clean = n === null || Number.isNaN(n) ? null : n;
+    (which === 'min' ? this.ratingMin : this.ratingMax).set(clean);
   }
 
   protected play(san: string): void {

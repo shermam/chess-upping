@@ -22,6 +22,7 @@ const sample: LichessGameJson = {
   opening: { eco: 'D31', name: 'Semi-Slav Defense: Marshall Gambit', ply: 7 },
   moves: 'd4 d5 c4 c6 Nc3 e6 e4 Nd7',
   clock: { initial: 300, increment: 3, totalTime: 420 },
+  clocks: [30000, 30000, 29800, 29500, 29600, 29100, 29400, 28800],
 };
 
 describe('parseLichessGame', () => {
@@ -36,6 +37,11 @@ describe('parseLichessGame', () => {
     expect(game!.opening?.eco).toBe('D31');
     expect(game!.clock).toEqual({ initial: 300, increment: 3 });
     expect(game!.moves).toBe('d4 d5 c4 c6 Nc3 e6 e4 Nd7');
+    expect(game!.clocks).toEqual([30000, 30000, 29800, 29500, 29600, 29100, 29400, 28800]);
+  });
+
+  it('stores null clocks when Lichess sends none', () => {
+    expect(parseLichessGame({ ...sample, clocks: undefined })!.clocks).toBeNull();
   });
 
   it('drops non-standard variants and move-less games', () => {

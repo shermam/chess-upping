@@ -55,7 +55,7 @@ export class LichessApiService {
     const params = new URLSearchParams({
       moves: 'true',
       opening: 'true',
-      clocks: 'false',
+      clocks: 'true',
       evals: 'false',
       sort: 'dateAsc',
       perfType: STANDARD_PERFS.join(','),

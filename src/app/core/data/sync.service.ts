@@ -110,6 +110,8 @@ export class SyncService {
         warnings.push(`Could not pull games from the cloud: ${this.describe(err)}`);
       }
       this.throwIfAborted(signal);
+      await this.backfillClocks(link, signal);
+      this.throwIfAborted(signal);
       await this.downloadFromLichess(link, signal);
       this.throwIfAborted(signal);
       await this.uploadPending(warnings);
@@ -147,6 +149,38 @@ export class SyncService {
       skipped += page.skipped;
     }
     if (skipped > 0) warnings.push(`Ignored ${skipped} malformed cloud game(s).`);
+  }
+
+  /**
+   * Games imported before move times were collected lack clock data. Once per
+   * account, re-stream the whole history (fast: 60 games/s) and add the
+   * clocks to the stored games; a device whose first sync already included
+   * clocks has nothing to do.
+   */
+  private async backfillClocks(link: LichessLink, signal: AbortSignal): Promise<void> {
+    const flagKey = `clocksBackfill:${link.id}`;
+    if ((await this.db.getCursor(flagKey)) > 0) return;
+    const downloadedBefore = (await this.db.getCursor(`lichess:${link.id}`)) > 0;
+    const pulledBefore = (await this.db.getCursor(`firestore:${link.id}`)) > 0;
+    if (downloadedBefore || pulledBefore) {
+      this.phase.set('downloading');
+      let chunk: Game[] = [];
+      const flush = async () => {
+        if (chunk.length === 0) return;
+        this.throwIfAborted(signal);
+        await this.db.mergeClocks(chunk);
+        this.downloaded.update((n) => n + chunk.length);
+        chunk = [];
+      };
+      for await (const raw of this.lichess.streamGames(link.username, link.token, 0, signal)) {
+        const game = parseLichessGame(raw);
+        if (!game || !game.clocks) continue;
+        chunk.push(game);
+        if (chunk.length >= WRITE_CHUNK) await flush();
+      }
+      await flush();
+    }
+    await this.db.setCursor(flagKey, Date.now());
   }
 
   private async downloadFromLichess(link: LichessLink, signal: AbortSignal): Promise<void> {

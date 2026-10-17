@@ -19,6 +19,7 @@ export interface LichessGameJson {
   opening?: { eco: string; name: string; ply: number };
   moves?: string;
   clock?: { initial: number; increment: number; totalTime?: number };
+  clocks?: number[];
 }
 
 export interface LichessPlayerJson {
@@ -76,6 +77,7 @@ export function parseLichessGame(raw: LichessGameJson): Game | null {
       : null,
     clock: raw.clock ? { initial: raw.clock.initial, increment: raw.clock.increment } : null,
     source: raw.source ?? null,
+    clocks: Array.isArray(raw.clocks) ? raw.clocks.filter((c) => Number.isInteger(c)) : null,
   };
 }
 

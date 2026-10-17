@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   setDoc,
   startAfter,
+  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -102,6 +103,20 @@ export class GamesRepoService {
     }
   }
 
+  private async addClocks(game: Game): Promise<boolean> {
+    try {
+      await updateDoc(doc(this.games, game.id), {
+        clocks: game.clocks,
+        uploadedBy: this.firebase.auth.currentUser?.uid ?? null,
+        uploadedAt: serverTimestamp(),
+      });
+      return true;
+    } catch (err) {
+      if (!isPermissionDenied(err)) throw err;
+      return false;
+    }
+  }
+
   private uploadDoc(game: Game) {
     return {
       ...game,
@@ -126,7 +141,10 @@ export class GamesRepoService {
         outcome.uploaded.push(game.id);
       } catch (err) {
         if (!isPermissionDenied(err)) throw err;
-        outcome.rejected.push(game.id);
+        // The document exists. The rules still allow adding clock data to a
+        // document that has none, which is how older uploads are completed.
+        if (game.clocks && (await this.addClocks(game))) outcome.uploaded.push(game.id);
+        else outcome.rejected.push(game.id);
       }
     }
     return outcome;
