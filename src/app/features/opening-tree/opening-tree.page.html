@@ -1,0 +1,228 @@
+@if (profileLoading()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (!link()) {
+  <section class="connect">
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-card-title>Connect your Lichess account</mat-card-title>
+        <mat-card-subtitle>
+          Your games are downloaded from Lichess and kept in this browser, so the opening tree
+          responds instantly.
+        </mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <p>
+          You will be sent to lichess.org to approve read access. No password is shared with this
+          app, and you can revoke the access at any time from your Lichess preferences.
+        </p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button matButton="filled" (click)="connectLichess()">
+          <mat-icon>link</mat-icon>
+          Connect Lichess
+        </button>
+      </mat-card-actions>
+    </mat-card>
+  </section>
+} @else {
+  <section class="filters">
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="color()"
+      (change)="setColor($event.value)"
+      aria-label="Colour played"
+    >
+      <mat-button-toggle value="white">As white</mat-button-toggle>
+      <mat-button-toggle value="black">As black</mat-button-toggle>
+    </mat-button-toggle-group>
+
+    <mat-chip-listbox multiple aria-label="Time controls" (change)="setPerfs($event)">
+      @for (perf of perfOptions; track perf) {
+        <mat-chip-option [value]="perf">{{ perfLabels[perf] }}</mat-chip-option>
+      }
+    </mat-chip-listbox>
+
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="rated()"
+      (change)="setRated($event.value)"
+      aria-label="Rated filter"
+    >
+      <mat-button-toggle value="all">All</mat-button-toggle>
+      <mat-button-toggle value="rated">Rated</mat-button-toggle>
+      <mat-button-toggle value="casual">Casual</mat-button-toggle>
+    </mat-button-toggle-group>
+
+    <span class="spacer"></span>
+    <span class="count" matTooltip="Games matching the filters / all your games">
+      {{ filteredCount() | number }} / {{ totalGames() | number }} games
+    </span>
+  </section>
+
+  @if (sync.busy()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <section class="explorer">
+    <div class="board-column">
+      <app-board
+        [fen]="fen()"
+        [orientation]="color()"
+        [turnColor]="turn()"
+        [dests]="dests()"
+        [lastMove]="lastMove()"
+        (move)="onBoardMove($event)"
+      />
+      <div class="controls">
+        <button
+          matIconButton
+          (click)="reset()"
+          [disabled]="line().length === 0"
+          matTooltip="Start position (Home)"
+        >
+          <mat-icon>first_page</mat-icon>
+        </button>
+        <button
+          matIconButton
+          (click)="back()"
+          [disabled]="line().length === 0"
+          matTooltip="Back (←)"
+        >
+          <mat-icon>chevron_left</mat-icon>
+        </button>
+        <button
+          matIconButton
+          (click)="stats()[0] && play(stats()[0].san)"
+          [disabled]="stats().length === 0"
+          matTooltip="Most played move (→)"
+        >
+          <mat-icon>chevron_right</mat-icon>
+        </button>
+        <button
+          matIconButton
+          (click)="flip()"
+          matTooltip="Switch colour"
+          aria-label="Switch colour"
+        >
+          <mat-icon>swap_vert</mat-icon>
+        </button>
+      </div>
+      <div class="line">
+        @if (line().length === 0) {
+          <span class="muted">Start position. Click a move or play one on the board.</span>
+        }
+        @for (pair of movePairs(); track pair.n) {
+          <span class="move-number">{{ pair.n }}.</span>
+          <button class="san" (click)="goTo(pair.whiteIdx + 1)">{{ pair.white }}</button>
+          @if (pair.black) {
+            <button class="san" (click)="goTo(pair.whiteIdx + 2)">{{ pair.black }}</button>
+          }
+        }
+      </div>
+      @if (openingName(); as name) {
+        <div class="opening">{{ name }}</div>
+      }
+    </div>
+
+    <div class="stats-column">
+      <div class="summary">
+        <strong>{{ totals().games | number }}</strong> games here ·
+        <span class="win">{{ percent(totals().wins, totals().games) }}% won</span> ·
+        <span class="draw">{{ percent(totals().draws, totals().games) }}% drawn</span> ·
+        <span class="loss">{{ percent(totals().losses, totals().games) }}% lost</span>
+      </div>
+
+      @if (stats().length > 0) {
+        <table class="moves">
+          <thead>
+            <tr>
+              <th>Move</th>
+              <th class="num">Games</th>
+              <th class="num">%</th>
+              <th>Win / draw / loss</th>
+              <th class="num">Opp. rating</th>
+              <th class="num">Last played</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of stats(); track row.san) {
+              <tr (click)="play(row.san)" tabindex="0" (keydown.enter)="play(row.san)">
+                <td class="san-cell">{{ row.san }}</td>
+                <td class="num">{{ row.games | number }}</td>
+                <td class="num">{{ percent(row.games, totals().games) }}</td>
+                <td>
+                  <div
+                    class="bar"
+                    [attr.aria-label]="
+                      row.wins + ' wins, ' + row.draws + ' draws, ' + row.losses + ' losses'
+                    "
+                  >
+                    <span class="win" [style.width.%]="percent(row.wins, row.games)">
+                      @if (percent(row.wins, row.games) >= 12) {
+                        {{ percent(row.wins, row.games) }}%
+                      }
+                    </span>
+                    <span class="draw" [style.width.%]="percent(row.draws, row.games)">
+                      @if (percent(row.draws, row.games) >= 12) {
+                        {{ percent(row.draws, row.games) }}%
+                      }
+                    </span>
+                    <span class="loss" [style.width.%]="percent(row.losses, row.games)">
+                      @if (percent(row.losses, row.games) >= 12) {
+                        {{ percent(row.losses, row.games) }}%
+                      }
+                    </span>
+                  </div>
+                </td>
+                <td class="num">{{ row.avgOpponentRating ?? '–' }}</td>
+                <td class="num">{{ row.lastPlayed | date: 'MMM y' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else if (totalGames() === 0 && sync.busy()) {
+        <p class="muted">Downloading your games from Lichess…</p>
+      } @else if (totalGames() === 0) {
+        <p class="muted">No games yet. <button matButton (click)="syncNow()">Sync now</button></p>
+      } @else {
+        <p class="muted">No games continue from this position.</p>
+      }
+
+      @if (recentGames().length > 0) {
+        <h3>Games reaching this position</h3>
+        <table class="games">
+          <tbody>
+            @for (g of recentGames(); track g.game.id) {
+              <tr>
+                <td>{{ g.game.createdAt | date: 'mediumDate' }}</td>
+                <td class="opponent">
+                  {{ g.opponent.name }}
+                  @if (g.opponent.rating) {
+                    <span class="muted">({{ g.opponent.rating }})</span>
+                  }
+                </td>
+                <td>{{ perfLabel(g.game.perf) }}{{ g.game.rated ? '' : ' · casual' }}</td>
+                <td [class]="g.result">{{ g.result }}</td>
+                <td>
+                  <a
+                    [href]="lichessUrl(g.game.id)"
+                    target="_blank"
+                    rel="noopener"
+                    matTooltip="Open on Lichess"
+                  >
+                    <mat-icon inline>open_in_new</mat-icon>
+                  </a>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (atLine().length > recentGames().length) {
+          <p class="muted">
+            Showing the {{ recentGames().length }} most recent of {{ atLine().length | number }}.
+          </p>
+        }
+      }
+    </div>
+  </section>
+}

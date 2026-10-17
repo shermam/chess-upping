@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The Lichess account the caller has linked (see UserProfileService).
+    function myLichessId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lichess.id;
+    }
+
+    // Per-user private data: profile, Lichess link and token, later annotations.
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Public chess games, shared by everyone. A game is written by one of its
+    // players (identified through their linked Lichess id) and never deleted.
+    match /games/{gameId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.id == gameId
+        && request.resource.data.variant == 'standard'
+        && request.resource.data.players is list
+        && request.resource.data.players.size() <= 2
+        && request.resource.data.moves is string
+        && request.resource.data.createdAt is number
+        && myLichessId() in request.resource.data.players;
+      allow delete: if false;
+    }
+  }
+}

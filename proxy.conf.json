@@ -1,0 +1,7 @@
+{
+  "/__/firebase": {
+    "target": "https://chess-upping.web.app",
+    "secure": true,
+    "changeOrigin": true
+  }
+}

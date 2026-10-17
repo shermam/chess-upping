@@ -1,0 +1,47 @@
+name: Deploy to Firebase
+
+# Every push to main deploys Firestore rules and indexes first, then the
+# Hosting site at https://chess-upping.web.app. The service account JSON lives
+# in the FIREBASE_SERVICE_ACCOUNT_CHESS_UPPING repository secret.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Deploy Firestore rules and indexes
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHESS_UPPING }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx firebase deploy --only firestore --project chess-upping --non-interactive
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
+
+      - name: Deploy Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHESS_UPPING }}
+          projectId: chess-upping
+          channelId: live
