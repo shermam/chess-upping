@@ -11,9 +11,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router, RouterLink, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth/auth.service';
 import { UserProfileService } from './core/auth/user-profile.service';
+import { BulkEvalService } from './core/data/bulk-eval.service';
 import { GamesStoreService } from './core/data/games-store.service';
 import { LocalDbService } from './core/data/local-db.service';
 import { SyncService } from './core/data/sync.service';
@@ -24,6 +25,7 @@ import { FirebaseService } from './core/firebase/firebase.service';
   imports: [
     RouterOutlet,
     RouterLink,
+    RouterLinkActive,
     MatToolbarModule,
     MatButtonModule,
     MatIconModule,
@@ -39,6 +41,7 @@ export class App {
   protected readonly auth = inject(AuthService);
   protected readonly profiles = inject(UserProfileService);
   protected readonly sync = inject(SyncService);
+  protected readonly bulk = inject(BulkEvalService);
   private readonly store = inject(GamesStoreService);
   private readonly db = inject(LocalDbService);
   private readonly router = inject(Router);
@@ -85,6 +88,7 @@ export class App {
   }
 
   protected async unlinkLichess(): Promise<void> {
+    await this.bulk.stop();
     await this.sync.cancel();
     await this.profiles.unlinkLichess();
     await this.db.clear();
@@ -92,6 +96,7 @@ export class App {
   }
 
   protected async signOut(): Promise<void> {
+    await this.bulk.stop();
     await this.sync.cancel();
     await this.auth.signOut();
     await this.db.clear();

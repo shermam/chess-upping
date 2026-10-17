@@ -27,6 +27,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "stockfish-19-lite-single.{js,wasm}",
+                "input": "node_modules/stockfish/bin",
+                "output": "engine"
               }
             ],
             "styles": [
@@ -41,7 +46,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "1.2MB",
+                  "maximumWarning": "1.5MB",
                   "maximumError": "2MB"
                 },
                 {

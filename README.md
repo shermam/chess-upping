@@ -28,6 +28,15 @@ Live site: https://chess-upping.web.app
 - **Opening tree.** Games are filtered by colour, time control and rated/casual,
   then aggregated by move sequence at each node: game counts, win/draw/loss,
   average opponent rating, last played, and the games that reached the position.
+- **Engine analysis.** Stockfish 19 (the lite, single-threaded WebAssembly
+  build, no cross-origin isolation needed) runs in a pool of Web Workers.
+  Evaluations are keyed by position (FEN without move counters) in a local
+  table mirrored to the shared `positions` collection, where a record is only
+  ever replaced by a deeper one. The game viewer shows the eval after every
+  move, the opening tree shows the eval of the position on the board, and the
+  Engine page evaluates every game you played in the background, resuming
+  where it stopped. Lookups go local store, then cloud, then engine, so a
+  position is never searched twice.
 - **Firebase config** is never committed. The app fetches it at runtime from
   Hosting's reserved `/__/firebase/init.json`.
 
@@ -38,7 +47,8 @@ src/app/core/firebase     Firebase initialisation from init.json (and emulators)
 src/app/core/auth         Google sign-in, route guard, user profile document
 src/app/core/lichess      OAuth PKCE, Lichess API client, NDJSON game parsing
 src/app/core/data         IndexedDB store, Firestore games repository, sync
-src/app/features          Pages: opening tree (with board), login, Lichess callback
+src/app/core/engine       Stockfish worker wrapper, UCI parsing, worker pool
+src/app/features          Pages: opening tree (with board), game viewer, engine, login, callback
 firestore.rules           Security rules; firestore.indexes.json the composite index
 .github/workflows         CI, preview channels on PRs, live deploy on main
 docs/BACKLOG.md           Features to build next
@@ -123,8 +133,16 @@ clock { initial, increment } | null, source,
 uploadedBy (uid), uploadedAt (server timestamp)
 ```
 
+`positions/{key}` (public; key = FEN without move counters, `/` replaced by `_`)
+
+```
+key, fen, cp | null, mate | null (White's point of view), depth, bestMove,
+pv (UCI, up to ten moves), engine, nodes, evaluatedAt, uploadedBy, uploadedAt
+```
+
 A game document is created once, by a signed-in user, with a strictly checked
-shape, and is never updated or deleted. The incremental pull on other devices
+shape, and is never updated or deleted. A position document may be replaced
+only by a deeper evaluation. The incremental pull on other devices
 pages on `uploadedAt`, so documents arriving out of date order are not missed.
 Because the Lichess link is made client-side, the rules cannot prove that the
 uploader played the game; see the backlog for server-side verification.

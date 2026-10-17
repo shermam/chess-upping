@@ -130,3 +130,60 @@ describe('games/{id}', () => {
     );
   });
 });
+
+describe('positions/{key}', () => {
+  const KEY = 'rnbqkbnr_pppppppp_8_8_4P3_8_PPPP1PPP_RNBQKBNR b KQkq -';
+  function evaluation(uid: string, overrides: Record<string, unknown> = {}) {
+    return {
+      key: KEY,
+      fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -',
+      cp: 30,
+      mate: null,
+      depth: 16,
+      bestMove: 'e7e5',
+      pv: 'e7e5 g1f3 b8c6',
+      engine: 'stockfish-19-lite',
+      nodes: 150000,
+      evaluatedAt: 1700000000000,
+      uploadedBy: uid,
+      uploadedAt: serverTimestamp(),
+      ...overrides,
+    };
+  }
+
+  it('lets signed-in users create and read evaluations', async () => {
+    const alice = env.authenticatedContext(ALICE).firestore();
+    const bob = env.authenticatedContext(BOB).firestore();
+    await assertSucceeds(setDoc(doc(alice, 'positions', KEY), evaluation(ALICE)));
+    await assertSucceeds(getDoc(doc(bob, 'positions', KEY)));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'positions', KEY)));
+    await assertFails(
+      setDoc(doc(env.unauthenticatedContext().firestore(), 'positions', 'other'), evaluation('x')),
+    );
+  });
+
+  it('replaces an evaluation only with a deeper one', async () => {
+    const alice = env.authenticatedContext(ALICE).firestore();
+    const bob = env.authenticatedContext(BOB).firestore();
+    await assertSucceeds(setDoc(doc(alice, 'positions', KEY), evaluation(ALICE, { depth: 16 })));
+    await assertFails(setDoc(doc(bob, 'positions', KEY), evaluation(BOB, { depth: 16 })));
+    await assertFails(setDoc(doc(bob, 'positions', KEY), evaluation(BOB, { depth: 12 })));
+    await assertSucceeds(setDoc(doc(bob, 'positions', KEY), evaluation(BOB, { depth: 20 })));
+  });
+
+  it('rejects malformed evaluations', async () => {
+    const alice = env.authenticatedContext(ALICE).firestore();
+    const ref = doc(alice, 'positions', KEY);
+    await assertFails(setDoc(ref, evaluation(ALICE, { key: 'other' })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { cp: null })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { cp: '30' })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { depth: 0 })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { depth: 100 })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { pv: 42 })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { uploadedBy: BOB })));
+    await assertFails(setDoc(ref, evaluation(ALICE, { uploadedAt: new Date() })));
+    await assertSucceeds(
+      setDoc(ref, evaluation(ALICE, { cp: null, mate: 3, bestMove: null, pv: '' })),
+    );
+  });
+});

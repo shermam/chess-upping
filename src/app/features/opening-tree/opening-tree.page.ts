@@ -4,8 +4,10 @@ import {
   Component,
   HostListener,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -14,13 +16,17 @@ import { MatChipListboxChange, MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
 import { Chess } from 'chess.js';
 import type { Key } from 'chessground/types';
 import { UserProfileService } from '../../core/auth/user-profile.service';
+import { EvalStoreService } from '../../core/data/eval-store.service';
 import { GamesStoreService } from '../../core/data/games-store.service';
 import { SyncService } from '../../core/data/sync.service';
+import { EnginePoolService } from '../../core/engine/engine-pool.service';
 import { LichessAuthService } from '../../core/lichess/lichess-auth.service';
 import { Color, PERF_LABELS, STANDARD_PERFS } from '../../models/game';
+import { PositionEval, formatEval, positionKey } from '../../models/position-eval';
 import { BoardComponent, BoardMove } from './board.component';
 import { TreeFilters, gamesAtLine, nextMoveStats, percent, prepareGames, tally } from './tree';
 
@@ -38,6 +44,7 @@ const GAME_LIST_LIMIT = 50;
     MatIconModule,
     MatProgressBarModule,
     MatTooltipModule,
+    RouterLink,
     BoardComponent,
   ],
   templateUrl: './opening-tree.page.html',
@@ -48,7 +55,31 @@ export class OpeningTreePage {
   private readonly profiles = inject(UserProfileService);
   private readonly store = inject(GamesStoreService);
   private readonly lichessAuth = inject(LichessAuthService);
+  private readonly evals = inject(EvalStoreService);
+  private readonly pool = inject(EnginePoolService);
   protected readonly sync = inject(SyncService);
+
+  /** Engine evaluation of the position on the board, fetched or computed on demand. */
+  protected readonly positionEval = signal<PositionEval | null>(null);
+  protected readonly evalText = computed(() => {
+    const e = this.positionEval();
+    return e ? formatEval(e) : null;
+  });
+  protected readonly bestMoveSan = computed(() => {
+    const e = this.positionEval();
+    if (!e?.bestMove) return null;
+    try {
+      const chess = new Chess(this.fen());
+      return chess.move({
+        from: e.bestMove.slice(0, 2),
+        to: e.bestMove.slice(2, 4),
+        promotion: e.bestMove[4],
+      }).san;
+    } catch {
+      return null;
+    }
+  });
+  private evalRequest = 0;
 
   protected readonly perfOptions = STANDARD_PERFS;
   protected readonly perfLabels = PERF_LABELS;
@@ -128,6 +159,30 @@ export class OpeningTreePage {
     }
     return pairs;
   });
+
+  constructor() {
+    // Keep the engine line in step with the board, debounced so that
+    // stepping quickly through moves evaluates only where the user stops.
+    effect((onCleanup) => {
+      const fen = this.fen();
+      const linked = !!this.link();
+      untracked(() => this.positionEval.set(null));
+      if (!linked) return;
+      const timer = setTimeout(() => void this.evaluateCurrent(fen), 250);
+      onCleanup(() => clearTimeout(timer));
+    });
+  }
+
+  private async evaluateCurrent(fen: string): Promise<void> {
+    const request = ++this.evalRequest;
+    const key = positionKey(fen);
+    try {
+      const result = await this.evals.getOrEvaluate([fen], this.pool.depth(), 'high');
+      if (request === this.evalRequest) this.positionEval.set(result.get(key) ?? null);
+    } catch (err) {
+      console.warn('position evaluation failed', err);
+    }
+  }
 
   protected play(san: string): void {
     this.line.update((l) => [...l, san]);

@@ -3,27 +3,22 @@
 Features and improvements to build after the first version. Items are rough
 notes, not specifications; each one should be discussed before it is built.
 
-## Engine evaluation in the browser
+## Engine evaluation (built; follow-ups)
 
-Run Stockfish (WebAssembly, in a Web Worker) inside the app and record the
-evaluation of every position reached in the user's games.
+The first version is in: Stockfish in Web Workers, a position-keyed table in
+IndexedDB and Firestore, the game viewer, and the bulk job on the Engine page.
+Still to do:
 
-- Keep a separate collection keyed by position so a position is never
-  evaluated twice: `positions/{fenKey}` with `{ eval, depth, bestMove, pv,
-engine, evaluatedAt }`. The key should be the FEN without the move counters
-  (piece placement, side to move, castling rights, en passant square), so the
-  same position reached by different move orders shares one record. FEN
-  strings contain `/`, so the key needs an encoding that is safe as a
-  Firestore document id (for example a hash, or replacing `/` with `_`).
-- Mirror the table in IndexedDB like games, and sync it both ways.
-- When walking through a game, look up the resulting position after each move
-  and show the stored eval; queue the position for evaluation if missing.
-- Only re-evaluate when a higher depth is requested than the stored one.
-- Background evaluation of all positions from recent games, respecting
-  battery and CPU (idle callbacks, a cap on concurrent workers).
-- Evaluations are expensive to compute and public by nature, so they belong
-  in a shared collection like games, with rules allowing any signed-in user to
-  write a record that passes shape checks.
+- Eval graph over the game (cp clipped to a few pawns, mate as the extreme).
+- Move classification (inaccuracy, mistake, blunder) from the eval drop after
+  each move, and a per-game accuracy figure.
+- Mistake finder across all games, grouped by opening and by position.
+- Respect battery and CPU: pause the bulk job on battery, use idle callbacks.
+- Multi-threaded engine (needs COOP/COEP headers, which conflicts with the
+  Google sign-in popup; would require the redirect sign-in flow).
+- Multiple principal variations in the viewer.
+- Background sync of positions from the cloud for devices that did not
+  evaluate them (today lookups are per game, on demand).
 
 ## Opening tree
 

@@ -30,6 +30,7 @@
     "dexie": "^4.4.6",
     "firebase": "^13.0.0",
     "rxjs": "~7.8.0",
+    "stockfish": "^19.0.1",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
