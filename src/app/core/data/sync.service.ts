@@ -40,6 +40,8 @@ export class SyncService {
   readonly uploaded = signal(0);
   readonly pending = signal(0);
   readonly error = signal<string | null>(null);
+  /** Non-fatal problem from the last sync (for example the cloud pull failed). */
+  readonly warning = signal<string | null>(null);
   readonly lastSyncAt = signal<number | null>(null);
   readonly busy = computed(() => ['pulling', 'downloading', 'uploading'].includes(this.phase()));
 
@@ -61,12 +63,20 @@ export class SyncService {
 
   private async run(link: LichessLink, signal: AbortSignal): Promise<void> {
     this.error.set(null);
+    this.warning.set(null);
     this.pulled.set(0);
     this.downloaded.set(0);
     this.uploaded.set(0);
     try {
       await this.store.load(link.id);
-      await this.pullFromFirestore(link.id);
+      try {
+        await this.pullFromFirestore(link.id);
+      } catch (err) {
+        // Games uploaded elsewhere are a convenience; Lichess remains the
+        // source of truth, so carry on with the download and surface this.
+        console.warn('pull from Firestore failed', err);
+        this.warning.set(`Could not pull games from the cloud: ${this.describe(err)}`);
+      }
       await this.downloadFromLichess(link, signal);
       await this.uploadPending();
       await this.store.refresh();
@@ -154,6 +164,9 @@ export class SyncService {
     if (err instanceof Error) {
       if (/resource-exhausted/i.test(err.message)) {
         return 'Firestore daily quota reached. Remaining games will upload on a later sync.';
+      }
+      if (/failed-precondition/i.test(err.message) && /index/i.test(err.message)) {
+        return 'the Firestore index for games is missing (deploy firestore.indexes.json).';
       }
       return err.message;
     }

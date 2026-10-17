@@ -27,6 +27,9 @@
   &.error {
     color: var(--mat-sys-error);
   }
+  &.warning {
+    color: var(--mat-sys-tertiary);
+  }
 }
 
 .spin {

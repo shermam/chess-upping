@@ -82,6 +82,19 @@ rules and indexes, then Hosting. Pull requests get a temporary preview channel
 (`.github/workflows/preview.yml`). Both use the
 `FIREBASE_SERVICE_ACCOUNT_CHESS_UPPING` repository secret.
 
+The service account needs these IAM roles on the project for the workflows
+to succeed (the default `firebase-adminsdk` account has only some of them):
+
+- Firebase Hosting Admin (`roles/firebasehosting.admin`)
+- Firebase Rules Admin (`roles/firebaserules.admin`)
+- Cloud Datastore Index Admin (`roles/datastore.indexAdmin`)
+- Service Usage Consumer (`roles/serviceusage.serviceUsageConsumer`)
+
+Granting the broader Firebase Admin role (`roles/firebase.admin`) also works.
+Without the index role, the composite index in `firestore.indexes.json` can
+be created by hand in the Firebase console; the app still works without it
+but cannot pull games uploaded from other devices.
+
 Google sign-in only works on domains listed under Authentication > Settings >
 Authorized domains in the Firebase console. `chess-upping.web.app`,
 `chess-upping.firebaseapp.com` and `localhost` are there by default; a preview
