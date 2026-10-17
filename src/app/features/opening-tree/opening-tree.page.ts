@@ -27,7 +27,6 @@ import { EvalStoreService } from '../../core/data/eval-store.service';
 import { GamesStoreService } from '../../core/data/games-store.service';
 import { PositionIndexService } from '../../core/data/position-index.service';
 import {
-  EXPLORER_RATINGS,
   ExplorerResult,
   ExplorerSource,
   LichessExplorerService,
@@ -126,8 +125,13 @@ export class OpeningTreePage {
   protected readonly explorerSource = signal<ExplorerSource | 'off'>('off');
   protected readonly explorerResult = signal<ExplorerResult | null>(null);
   protected readonly explorerError = signal<string | null>(null);
-  protected readonly explorerRatings = EXPLORER_RATINGS;
   private explorerRequest = 0;
+  /** Bumped to make the board redraw after a cancelled promotion. */
+  protected readonly boardRefresh = signal(0);
+  /** The mode actually in effect: by position only once the index is complete. */
+  protected readonly effectiveMode = computed(() =>
+    this.mergeTranspositions() && this.indexReady() ? 'position' : 'order',
+  );
 
   /** Engine evaluation of the position on the board, fetched or computed on demand. */
   protected readonly positionEval = signal<PositionEval | null>(null);
@@ -305,6 +309,8 @@ export class OpeningTreePage {
       const source = this.explorerSource();
       const perfs = this.perfs();
       untracked(() => {
+        // Invalidate any request still in flight for the previous position.
+        this.explorerRequest++;
         this.explorerResult.set(null);
         this.explorerError.set(null);
       });
@@ -442,10 +448,12 @@ export class OpeningTreePage {
   }
 
   protected play(san: string): void {
+    this.pendingPromotion.set(null);
     this.line.update((l) => [...l, san]);
   }
 
   protected onBoardMove(move: BoardMove): void {
+    this.pendingPromotion.set(null);
     const chess = new Chess(this.fen());
     const piece = chess.get(move.from as Square);
     const lastRank = move.to.endsWith('8') || move.to.endsWith('1');
@@ -470,8 +478,8 @@ export class OpeningTreePage {
 
   protected cancelPromotion(): void {
     this.pendingPromotion.set(null);
-    // Re-render the board from the unchanged position.
-    this.line.update((l) => [...l]);
+    // Redraw the board from the unchanged position (the pawn was shown on the last rank).
+    this.boardRefresh.update((n) => n + 1);
   }
 
   private playBoardMove({ from, to }: BoardMove, promotion: PromotionPiece | undefined): void {
@@ -486,18 +494,22 @@ export class OpeningTreePage {
   }
 
   protected back(): void {
+    this.pendingPromotion.set(null);
     this.line.update((l) => l.slice(0, -1));
   }
 
   protected reset(): void {
+    this.pendingPromotion.set(null);
     this.line.set([]);
   }
 
   protected goTo(ply: number): void {
+    this.pendingPromotion.set(null);
     this.line.update((l) => l.slice(0, ply));
   }
 
   protected flip(): void {
+    this.pendingPromotion.set(null);
     this.color.update((c) => (c === 'white' ? 'black' : 'white'));
     this.line.set([]);
   }

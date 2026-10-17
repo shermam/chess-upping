@@ -27,6 +27,8 @@ export interface ExplorerOptions {
 }
 
 const BASE = 'https://explorer.lichess.org';
+/** Cached responses kept for the session; the oldest are dropped beyond this. */
+const CACHE_LIMIT = 500;
 export const EXPLORER_RATINGS = [0, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2500] as const;
 
 /**
@@ -57,6 +59,10 @@ export class LichessExplorerService {
       pending = this.fetch(url);
       this.cache.set(url, pending);
       pending.catch(() => this.cache.delete(url));
+      if (this.cache.size > CACHE_LIMIT) {
+        const oldest = this.cache.keys().next().value;
+        if (oldest !== undefined) this.cache.delete(oldest);
+      }
     }
     return pending;
   }

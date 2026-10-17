@@ -103,7 +103,7 @@
 
     <mat-button-toggle-group
       hideSingleSelectionIndicator
-      [value]="mergeTranspositions() ? 'position' : 'order'"
+      [value]="effectiveMode()"
       (change)="mergeTranspositions.set($event.value === 'position')"
       aria-label="Tree mode"
       [matTooltip]="
@@ -138,6 +138,7 @@
         [turnColor]="turn()"
         [dests]="dests()"
         [lastMove]="lastMove()"
+        [refresh]="boardRefresh()"
         (move)="onBoardMove($event)"
       />
       @if (pendingPromotion()) {
