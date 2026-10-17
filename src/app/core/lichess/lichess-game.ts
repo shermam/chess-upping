@@ -19,6 +19,7 @@ export interface LichessGameJson {
   opening?: { eco: string; name: string; ply: number };
   moves?: string;
   clock?: { initial: number; increment: number; totalTime?: number };
+  clocks?: number[];
 }
 
 export interface LichessPlayerJson {
@@ -27,6 +28,12 @@ export interface LichessPlayerJson {
   ratingDiff?: number;
   aiLevel?: number;
   name?: string;
+}
+
+/** Clock readings are kept only when complete: a dropped entry would shift every later ply. */
+function validClocks(clocks: unknown): number[] | null {
+  if (!Array.isArray(clocks) || clocks.length === 0) return null;
+  return clocks.every((c) => Number.isInteger(c) && c >= 0) ? (clocks as number[]) : null;
 }
 
 function toPlayer(p: LichessPlayerJson | undefined): GamePlayer {
@@ -76,6 +83,7 @@ export function parseLichessGame(raw: LichessGameJson): Game | null {
       : null,
     clock: raw.clock ? { initial: raw.clock.initial, increment: raw.clock.increment } : null,
     source: raw.source ?? null,
+    clocks: validClocks(raw.clocks),
   };
 }
 

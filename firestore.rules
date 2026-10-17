@@ -40,7 +40,16 @@ service cloud.firestore {
           || (g.opening is map && g.opening.eco is string && g.opening.name is string && g.opening.ply is number))
         && (g.clock == null
           || (g.clock is map && g.clock.initial is number && g.clock.increment is number))
-        && (g.source == null || g.source is string);
+        && (g.source == null || g.source is string)
+        && validClocks(g.get('clocks', null));
+    }
+
+    // Rules cannot iterate a list; checking the ends and the size keeps out
+    // the obvious garbage.
+    function validClocks(c) {
+      return c == null
+        || (c is list && c.size() <= 1000
+          && (c.size() == 0 || (c[0] is int && c[c.size() - 1] is int)));
     }
 
     function validEval(e, id) {
@@ -86,7 +95,17 @@ service cloud.firestore {
         && validGame(request.resource.data, gameId)
         && request.resource.data.uploadedBy == request.auth.uid
         && request.resource.data.uploadedAt == request.time;
-      allow update, delete: if false;
+      // The one permitted change: adding clock data to a game stored without it.
+      allow update: if signedIn()
+        && resource.data.get('clocks', null) == null
+        && request.resource.data.clocks is list
+        && request.resource.data.clocks.size() > 0
+        && validClocks(request.resource.data.clocks)
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['clocks', 'uploadedBy', 'uploadedAt'])
+        && request.resource.data.uploadedBy == request.auth.uid
+        && request.resource.data.uploadedAt == request.time;
+      allow delete: if false;
     }
 
     // Engine evaluations keyed by position. Anyone signed in may add one, and

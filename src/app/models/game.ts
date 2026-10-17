@@ -34,6 +34,12 @@ export interface Game {
   opening: { eco: string; name: string; ply: number } | null;
   clock: { initial: number; increment: number } | null;
   source: string | null;
+  /**
+   * Clock reading of the mover after each ply, in centiseconds, as exported
+   * by Lichess. Null for correspondence games and games imported before move
+   * times were collected (those are backfilled on the next sync).
+   */
+  clocks: number[] | null;
 }
 
 /** The local copy adds an upload flag (IndexedDB cannot index booleans). */

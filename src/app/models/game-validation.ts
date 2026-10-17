@@ -57,7 +57,10 @@ export function isValidGame(x: unknown): x is Game {
       (isRecord(x['clock']) &&
         isNumber(x['clock']['initial']) &&
         isNumber(x['clock']['increment']))) &&
-    isNullOr(x['source'], isString)
+    isNullOr(x['source'], isString) &&
+    (x['clocks'] === undefined ||
+      x['clocks'] === null ||
+      (Array.isArray(x['clocks']) && x['clocks'].every(isNumber)))
   );
 }
 
@@ -81,5 +84,7 @@ export function toGame(x: unknown): Game | null {
     opening: x.opening,
     clock: x.clock,
     source: x.source,
+    // Documents written before move times were collected have no field.
+    clocks: (x as { clocks?: number[] | null }).clocks ?? null,
   };
 }

@@ -38,4 +38,11 @@ describe('isValidGame', () => {
     const converted = toGame({ ...game, uploadedBy: 'uid', uploadedAt: { seconds: 1 } });
     expect(converted).toEqual(game);
   });
+
+  it('treats a missing clocks field as null and validates present ones', () => {
+    const { clocks: _clocks, ...legacy } = game;
+    expect(toGame(legacy)?.clocks).toBeNull();
+    expect(isValidGame({ ...game, clocks: [1, 2, 3] })).toBe(true);
+    expect(isValidGame({ ...game, clocks: ['x'] })).toBe(false);
+  });
 });
