@@ -20,11 +20,19 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
-import { Chess } from 'chess.js';
+import { Chess, Square } from 'chess.js';
 import type { Key } from 'chessground/types';
 import { UserProfileService } from '../../core/auth/user-profile.service';
 import { EvalStoreService } from '../../core/data/eval-store.service';
 import { GamesStoreService } from '../../core/data/games-store.service';
+import { PositionIndexService } from '../../core/data/position-index.service';
+import {
+  EXPLORER_RATINGS,
+  ExplorerResult,
+  ExplorerSource,
+  LichessExplorerService,
+} from '../../core/explorer/lichess-explorer.service';
+import { OpeningsService } from '../../core/openings/openings.service';
 import { SyncService } from '../../core/data/sync.service';
 import { EnginePoolService } from '../../core/engine/engine-pool.service';
 import { LichessAuthService } from '../../core/lichess/lichess-auth.service';
@@ -35,17 +43,22 @@ import { BoardComponent, BoardMove } from './board.component';
 import {
   DEFAULT_FILTERS,
   MoveStats,
+  NodeEntry,
   ResultFilter,
   SortBy,
   TreeFilters,
-  gamesAtLine,
-  nextMoveStats,
+  entriesAtLine,
+  entriesAtPosition,
+  nextMoveStatsFrom,
   percent,
   prepareGames,
   scoreClass,
   sortStats,
   tally,
 } from './tree';
+
+const PROMOTION_PIECES = ['q', 'r', 'b', 'n'] as const;
+type PromotionPiece = (typeof PROMOTION_PIECES)[number];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Candidate moves evaluated per node, most played first. */
@@ -95,7 +108,26 @@ export class OpeningTreePage {
   private readonly lichessAuth = inject(LichessAuthService);
   private readonly evals = inject(EvalStoreService);
   private readonly pool = inject(EnginePoolService);
+  private readonly index = inject(PositionIndexService);
+  private readonly openings = inject(OpeningsService);
+  private readonly explorer = inject(LichessExplorerService);
   protected readonly sync = inject(SyncService);
+
+  /** Group games by position reached (merging transpositions) instead of by move order. */
+  protected readonly mergeTranspositions = signal(true);
+  protected readonly indexReady = this.index.ready;
+  protected readonly indexProgress = computed(() =>
+    this.index.total() === 0 ? 0 : (this.index.indexed() / this.index.total()) * 100,
+  );
+  protected readonly promotionPieces = PROMOTION_PIECES;
+  /** A pending pawn move that needs a promotion piece before it is played. */
+  protected readonly pendingPromotion = signal<BoardMove | null>(null);
+
+  protected readonly explorerSource = signal<ExplorerSource | 'off'>('off');
+  protected readonly explorerResult = signal<ExplorerResult | null>(null);
+  protected readonly explorerError = signal<string | null>(null);
+  protected readonly explorerRatings = EXPLORER_RATINGS;
+  private explorerRequest = 0;
 
   /** Engine evaluation of the position on the board, fetched or computed on demand. */
   protected readonly positionEval = signal<PositionEval | null>(null);
@@ -157,10 +189,19 @@ export class OpeningTreePage {
       ratingMax: this.ratingMax(),
     });
   });
-  protected readonly atLine = computed(() => gamesAtLine(this.prepared(), this.line()));
+  /** Games at the current node, each with the ply it continues from. */
+  protected readonly entries = computed<NodeEntry[]>(() => {
+    const prepared = this.prepared();
+    if (this.mergeTranspositions() && this.indexReady()) {
+      this.index.version();
+      return entriesAtPosition(prepared, this.currentKey(), (id) => this.index.keysFor(id));
+    }
+    return entriesAtLine(prepared, this.line());
+  });
+  protected readonly atLine = computed(() => this.entries().map((e) => e.game));
   protected readonly totals = computed(() => tally(this.atLine()));
   protected readonly stats = computed(() =>
-    sortStats(nextMoveStats(this.atLine(), this.line().length), this.sortBy()),
+    sortStats(nextMoveStatsFrom(this.entries()), this.sortBy()),
   );
   /** Whether the user is the one to move at the current node. */
   protected readonly userToMove = computed(
@@ -193,6 +234,21 @@ export class OpeningTreePage {
     return chess;
   });
   protected readonly fen = computed(() => this.position().fen());
+  protected readonly currentKey = computed(() => positionKey(this.fen()));
+  /** Position keys along the current line, start position first. */
+  private readonly lineKeys = computed(() => {
+    const chess = new Chess();
+    const keys = [positionKey(chess.fen())];
+    for (const san of this.line()) {
+      try {
+        chess.move(san);
+      } catch {
+        break;
+      }
+      keys.push(positionKey(chess.fen()));
+    }
+    return keys;
+  });
   protected readonly turn = computed<Color>(() =>
     this.position().turn() === 'w' ? 'white' : 'black',
   );
@@ -211,16 +267,20 @@ export class OpeningTreePage {
     return last ? [last.from as Key, last.to as Key] : null;
   });
   protected readonly openingName = computed(() => {
-    // Lichess tags each game with the deepest opening it recognises and the
-    // ply where that name applies. Among games at this node, the deepest tag
-    // that the current line has fully reached names the position.
+    // The ECO dataset is keyed by position, so it names transpositions too.
+    if (this.openings.ready()) {
+      const hit = this.openings.nameForKeys(this.lineKeys());
+      if (hit) return `${hit.eco} ${hit.name}`;
+    }
+    // Fallback: the deepest Lichess opening tag among games at this node that
+    // the current line has fully reached.
     const depth = this.line().length;
-    let best: { name: string; ply: number } | null = null;
+    let best: { eco: string; name: string; ply: number } | null = null;
     for (const g of this.atLine()) {
       const opening = g.game.opening;
       if (opening && opening.ply <= depth && (!best || opening.ply > best.ply)) best = opening;
     }
-    return best?.name ?? null;
+    return best ? `${best.eco} ${best.name}` : null;
   });
   /** Pairs of plies for the breadcrumb: [moveNumber, whiteSan, blackSan?]. */
   protected readonly movePairs = computed(() => {
@@ -233,6 +293,25 @@ export class OpeningTreePage {
   });
 
   constructor() {
+    void this.openings.load();
+    // Build the position index for the current games in the background.
+    effect(() => {
+      const games = this.store.games();
+      if (games.length > 0) untracked(() => void this.index.ensure(games));
+    });
+    // Lichess explorer lookup for the position on the board, debounced.
+    effect((onCleanup) => {
+      const fen = this.fen();
+      const source = this.explorerSource();
+      const perfs = this.perfs();
+      untracked(() => {
+        this.explorerResult.set(null);
+        this.explorerError.set(null);
+      });
+      if (source === 'off') return;
+      const timer = setTimeout(() => void this.queryExplorer(source, fen, perfs), 400);
+      onCleanup(() => clearTimeout(timer));
+    });
     // Keep the engine line in step with the board, debounced so that
     // stepping quickly through moves evaluates only where the user stops.
     effect((onCleanup) => {
@@ -309,6 +388,45 @@ export class OpeningTreePage {
     }
   }
 
+  private async queryExplorer(
+    source: ExplorerSource,
+    fen: string,
+    perfs: ReadonlySet<string>,
+  ): Promise<void> {
+    const request = ++this.explorerRequest;
+    try {
+      const result = await this.explorer.query(source, fen, {
+        speeds: perfs.size > 0 ? [...perfs] : undefined,
+      });
+      if (request === this.explorerRequest) this.explorerResult.set(result);
+    } catch (err) {
+      if (request === this.explorerRequest) {
+        this.explorerError.set(err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+
+  protected explorerTotal(
+    r: ExplorerResult | { white: number; draws: number; black: number },
+  ): number {
+    return r.white + r.draws + r.black;
+  }
+
+  /** The user's result percentages for an explorer move, from the user's colour. */
+  protected explorerWin(m: { white: number; draws: number; black: number }): number {
+    const total = this.explorerTotal(m);
+    return percent(this.color() === 'white' ? m.white : m.black, total);
+  }
+
+  protected explorerDraw(m: { white: number; draws: number; black: number }): number {
+    return percent(m.draws, this.explorerTotal(m));
+  }
+
+  protected explorerLoss(m: { white: number; draws: number; black: number }): number {
+    const total = this.explorerTotal(m);
+    return percent(this.color() === 'white' ? m.black : m.white, total);
+  }
+
   protected scoreClassFor(row: MoveStats): string {
     return scoreClass(row, this.totals()) ?? '';
   }
@@ -327,10 +445,39 @@ export class OpeningTreePage {
     this.line.update((l) => [...l, san]);
   }
 
-  protected onBoardMove({ from, to }: BoardMove): void {
+  protected onBoardMove(move: BoardMove): void {
+    const chess = new Chess(this.fen());
+    const piece = chess.get(move.from as Square);
+    const lastRank = move.to.endsWith('8') || move.to.endsWith('1');
+    if (piece?.type === 'p' && lastRank) {
+      // Let the user pick the piece; the board shows the pawn on the last
+      // rank until the choice is made.
+      this.pendingPromotion.set(move);
+      return;
+    }
+    this.playBoardMove(move, undefined);
+  }
+
+  protected pieceName(piece: PromotionPiece): string {
+    return { q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight' }[piece];
+  }
+
+  protected promote(piece: PromotionPiece): void {
+    const move = this.pendingPromotion();
+    this.pendingPromotion.set(null);
+    if (move) this.playBoardMove(move, piece);
+  }
+
+  protected cancelPromotion(): void {
+    this.pendingPromotion.set(null);
+    // Re-render the board from the unchanged position.
+    this.line.update((l) => [...l]);
+  }
+
+  private playBoardMove({ from, to }: BoardMove, promotion: PromotionPiece | undefined): void {
     const chess = new Chess(this.fen());
     try {
-      const move = chess.move({ from, to, promotion: 'q' });
+      const move = chess.move({ from: from as Square, to: to as Square, promotion });
       this.play(move.san);
     } catch {
       // Not a legal move: chessground only offers legal destinations, so this

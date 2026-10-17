@@ -260,3 +260,21 @@ a mat-icon {
 .moves tbody tr.poor .san-cell {
   color: #c62828;
 }
+
+.promotion {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+.explorer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

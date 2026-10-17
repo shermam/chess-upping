@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Game } from '../../models/game';
 import {
   DEFAULT_FILTERS,
+  entriesAtLine,
+  entriesAtPosition,
   gamesAtLine,
+  nextMoveStatsFrom,
   nextMoveStats,
   prepareGames,
   score,
@@ -170,5 +173,47 @@ describe('sortStats and scoreClass', () => {
     expect(scoreClass(a, node)).toBe('good');
     expect(scoreClass(b, node)).toBe('poor');
     expect(scoreClass({ games: 2, wins: 0, draws: 0, losses: 2 }, node)).toBeNull();
+  });
+});
+
+describe('transposition mode', () => {
+  const transposing: Game[] = [
+    game('10', 'me', 'a', 'd4 Nf6 c4 e6', 'white'),
+    game('11', 'me', 'b', 'c4 e6 d4 Nf6', 'black'),
+    game('12', 'me', 'c', 'c4 Nf6 Nc3 e6 d4', null),
+  ];
+  const prepared = prepareGames(transposing, 'me', asWhite);
+  // Fake position keys: the same string for the same set of moves played.
+  const keysFor = (id: string) => {
+    const g = transposing.find((x) => x.id === id)!;
+    const moves = g.moves.split(' ');
+    return [''].concat(
+      moves.map((_, i) =>
+        moves
+          .slice(0, i + 1)
+          .sort()
+          .join(' '),
+      ),
+    );
+  };
+  const key = ['d4', 'Nf6', 'c4', 'e6'].sort().join(' ');
+
+  it('groups games that reach a position by different move orders', () => {
+    const entries = entriesAtPosition(prepared, key, keysFor);
+    expect(entries.map((e) => [e.game.game.id, e.ply])).toEqual([
+      ['10', 4],
+      ['11', 4],
+    ]);
+    expect(entriesAtLine(prepared, ['d4', 'Nf6', 'c4', 'e6']).map((e) => e.game.game.id)).toEqual([
+      '10',
+    ]);
+  });
+
+  it('aggregates next moves from each game at its own ply', () => {
+    const atC4e6 = entriesAtPosition(prepared, ['c4', 'e6'].sort().join(' '), keysFor);
+    const stats = nextMoveStatsFrom(atC4e6);
+    expect(stats.map((s) => [s.san, s.games])).toEqual([['d4', 1]]);
+    const atC4Nf6 = entriesAtPosition(prepared, ['c4', 'Nf6'].sort().join(' '), keysFor);
+    expect(nextMoveStatsFrom(atC4Nf6).map((s) => [s.san, s.games])).toEqual([['Nc3', 1]]);
   });
 });

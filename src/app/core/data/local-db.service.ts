@@ -13,6 +13,7 @@ class ChessUppingDb extends Dexie {
   meta!: Table<MetaRow, string>;
   positions!: Table<LocalPositionEval, string>;
   gameEvals!: Table<GameEvalRecord, string>;
+  gameKeys!: Table<{ gameId: string; keys: string }, string>;
 
   constructor() {
     super('chess-upping');
@@ -25,6 +26,13 @@ class ChessUppingDb extends Dexie {
       meta: 'key',
       positions: 'key, depth, pendingUpload',
       gameEvals: 'gameId, depth',
+    });
+    this.version(3).stores({
+      games: 'id, createdAt, *players, pendingUpload',
+      meta: 'key',
+      positions: 'key, depth, pendingUpload',
+      gameEvals: 'gameId, depth',
+      gameKeys: 'gameId',
     });
   }
 }
@@ -166,16 +174,32 @@ export class LocalDbService {
     await this.db.gameEvals.put(record);
   }
 
+  // ---- Position index ------------------------------------------------------
+
+  async getGameKeys(gameIds: string[]): Promise<Map<string, string[]>> {
+    const rows = await this.db.gameKeys.bulkGet(gameIds);
+    const map = new Map<string, string[]>();
+    rows.forEach((row) => {
+      if (row) map.set(row.gameId, row.keys.split('|'));
+    });
+    return map;
+  }
+
+  async putGameKeys(rows: { gameId: string; keys: string[] }[]): Promise<void> {
+    await this.db.gameKeys.bulkPut(rows.map((r) => ({ gameId: r.gameId, keys: r.keys.join('|') })));
+  }
+
   /** Wipes the local store (used when the user signs out or unlinks Lichess). */
   async clear(): Promise<void> {
     await this.db.transaction(
       'rw',
-      [this.db.games, this.db.meta, this.db.positions, this.db.gameEvals],
+      [this.db.games, this.db.meta, this.db.positions, this.db.gameEvals, this.db.gameKeys],
       async () => {
         await this.db.games.clear();
         await this.db.meta.clear();
         await this.db.positions.clear();
         await this.db.gameEvals.clear();
+        await this.db.gameKeys.clear();
       },
     );
   }

@@ -97,6 +97,36 @@ export function prepareGames(
   return out;
 }
 
+/** A game at a node of the tree, with the index of the move it plays next from there. */
+export interface NodeEntry {
+  game: TreeGame;
+  ply: number;
+}
+
+/** Games whose first moves match `line`, each continuing at `line.length`. */
+export function entriesAtLine(games: readonly TreeGame[], line: readonly string[]): NodeEntry[] {
+  return gamesAtLine(games, line).map((game) => ({ game, ply: line.length }));
+}
+
+/**
+ * Games that reached the position `key` by any move order, each continuing
+ * from its first visit to it. `keysFor` returns a game's positions by ply.
+ */
+export function entriesAtPosition(
+  games: readonly TreeGame[],
+  key: string,
+  keysFor: (gameId: string) => readonly string[] | undefined,
+): NodeEntry[] {
+  const out: NodeEntry[] = [];
+  for (const game of games) {
+    const keys = keysFor(game.game.id);
+    if (!keys) continue;
+    const ply = keys.indexOf(key);
+    if (ply >= 0) out.push({ game, ply });
+  }
+  return out;
+}
+
 /** Keeps the games whose first moves match `line` exactly. */
 export function gamesAtLine(games: readonly TreeGame[], line: readonly string[]): TreeGame[] {
   if (line.length === 0) return [...games];
@@ -124,11 +154,16 @@ export function score(t: Tally): number {
 
 /** Aggregates the move played at `ply` across games already filtered to a line. */
 export function nextMoveStats(games: readonly TreeGame[], ply: number): MoveStats[] {
+  return nextMoveStatsFrom(games.map((game) => ({ game, ply })));
+}
+
+/** Aggregates the next move of each entry, whatever ply it continues from. */
+export function nextMoveStatsFrom(entries: readonly NodeEntry[]): MoveStats[] {
   const byMove = new Map<
     string,
     MoveStats & { ratingSum: number; ratingCount: number; timeSum: number }
   >();
-  for (const g of games) {
+  for (const { game: g, ply } of entries) {
     const san = g.moves[ply];
     if (!san) continue;
     let stats = byMove.get(san);
