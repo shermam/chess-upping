@@ -56,9 +56,8 @@ export class App {
       case 'error':
         return 'Sync failed';
       case 'done':
-        return this.sync.pending() > 0
-          ? `Synced (${this.sync.pending()} waiting to upload)`
-          : 'Synced';
+        if (this.sync.pending() > 0) return `Synced (${this.sync.pending()} waiting to upload)`;
+        return this.sync.warning() ? 'Synced with warnings' : 'Synced';
       default:
         return '';
     }

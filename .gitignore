@@ -48,3 +48,6 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 *-debug.log
+
+# Firebase CLI cache
+.firebase/

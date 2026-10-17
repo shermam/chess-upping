@@ -19,12 +19,15 @@
         <span
           class="sync"
           [class.error]="sync.phase() === 'error'"
-          [matTooltip]="sync.error() ?? ''"
+          [class.warning]="sync.phase() === 'done' && !!sync.warning()"
+          [matTooltip]="sync.error() ?? sync.warning() ?? ''"
         >
           @if (sync.busy()) {
             <mat-icon class="spin">sync</mat-icon>
           } @else if (sync.phase() === 'error') {
             <mat-icon>sync_problem</mat-icon>
+          } @else if (sync.phase() === 'done' && sync.warning()) {
+            <mat-icon>warning</mat-icon>
           }
           {{ syncLabel() }}
         </span>
