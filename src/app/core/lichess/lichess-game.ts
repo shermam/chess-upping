@@ -87,11 +87,15 @@ export async function* parseNdjson<T>(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let finished = false;
   try {
     for (;;) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        finished = true;
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
       let newline = buffer.indexOf('\n');
       while (newline >= 0) {
@@ -104,6 +108,8 @@ export async function* parseNdjson<T>(
     const rest = buffer.trim();
     if (rest) yield JSON.parse(rest) as T;
   } finally {
+    // Stop the download if the consumer gave up before the end.
+    if (!finished) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

@@ -43,7 +43,7 @@ export function prepareGames(
   const out: TreeGame[] = [];
   for (const game of games) {
     const me = game[filters.color];
-    if (me.id !== lichessId) continue;
+    if (!me || me.id !== lichessId) continue;
     if (filters.perfs.size > 0 && !filters.perfs.has(game.perf)) continue;
     if (filters.rated === 'rated' && !game.rated) continue;
     if (filters.rated === 'casual' && game.rated) continue;

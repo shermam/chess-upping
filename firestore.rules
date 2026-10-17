@@ -7,9 +7,40 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // The Lichess account the caller has linked (see UserProfileService).
-    function myLichessId() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lichess.id;
+    function validPlayer(p) {
+      return p is map
+        && p.name is string
+        && (p.id == null || p.id is string)
+        && (p.rating == null || p.rating is number)
+        && (p.ratingDiff == null || p.ratingDiff is number);
+    }
+
+    function validGame(g, id) {
+      return g.id == id
+        && g.id is string
+        && g.variant == 'standard'
+        && g.rated is bool
+        && g.speed is string
+        && g.perf is string
+        && g.createdAt is number
+        && g.lastMoveAt is number
+        && g.status is string
+        && (g.winner == null || g.winner in ['white', 'black'])
+        && g.players is list
+        && g.players.size() >= 1
+        && g.players.size() <= 2
+        && g.players[0] is string
+        && (g.players.size() < 2 || g.players[1] is string)
+        && validPlayer(g.white)
+        && validPlayer(g.black)
+        && g.moves is string
+        && g.moves.size() > 0
+        && g.moves.size() < 20000
+        && (g.opening == null
+          || (g.opening is map && g.opening.eco is string && g.opening.name is string && g.opening.ply is number))
+        && (g.clock == null
+          || (g.clock is map && g.clock.initial is number && g.clock.increment is number))
+        && (g.source == null || g.source is string);
     }
 
     // Per-user private data: profile, Lichess link and token, later annotations.
@@ -17,19 +48,21 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
-    // Public chess games, shared by everyone. A game is written by one of its
-    // players (identified through their linked Lichess id) and never deleted.
+    // Public chess games, shared by everyone. Lichess games are immutable, so a
+    // document is written once by whichever player syncs it first and never
+    // changed. The writer is recorded, and the server timestamp drives the
+    // incremental pull on other devices.
+    //
+    // The Lichess account behind a Google account is linked client-side, so the
+    // rules cannot prove a writer really played the game; the shape checks
+    // keep documents well-formed, and a server-verified link is in the backlog.
     match /games/{gameId} {
       allow read: if signedIn();
-      allow create, update: if signedIn()
-        && request.resource.data.id == gameId
-        && request.resource.data.variant == 'standard'
-        && request.resource.data.players is list
-        && request.resource.data.players.size() <= 2
-        && request.resource.data.moves is string
-        && request.resource.data.createdAt is number
-        && myLichessId() in request.resource.data.players;
-      allow delete: if false;
+      allow create: if signedIn()
+        && validGame(request.resource.data, gameId)
+        && request.resource.data.uploadedBy == request.auth.uid
+        && request.resource.data.uploadedAt == request.time;
+      allow update, delete: if false;
     }
   }
 }

@@ -19,9 +19,12 @@ Live site: https://chess-upping.web.app
   readable only by that user, so a link made on one device works on all.
 - **Local first.** Games live in IndexedDB (via Dexie). Every screen reads from
   memory and IndexedDB; the network is only used to sync. A sync pulls games
-  newer than the last pull from Firestore, streams newer games from Lichess at
-  60 games/second, saves them locally, then uploads them to Firestore in
-  batches. Anything not uploaded (quota, offline) is retried next time.
+  uploaded to Firestore since the last pull, streams games from Lichess at
+  60 games/second starting a little before the newest one already downloaded
+  (so games that finished late are still caught), saves them locally, then
+  uploads them to Firestore in batches. Anything not uploaded (quota, offline)
+  is retried next time; games the server refuses because the opponent already
+  uploaded them are simply marked done.
 - **Opening tree.** Games are filtered by colour, time control and rated/casual,
   then aggregated by move sequence at each node: game counts, win/draw/loss,
   average opponent rating, last played, and the games that reached the position.
@@ -116,8 +119,18 @@ id, rated, variant ('standard'), speed, perf, createdAt, lastMoveAt, status,
 winner ('white' | 'black' | null), players [lichess ids of the human players],
 white { name, id, rating, ratingDiff }, black { ... },
 moves 'e4 e5 Nf3 ...', opening { eco, name, ply } | null,
-clock { initial, increment } | null, source
+clock { initial, increment } | null, source,
+uploadedBy (uid), uploadedAt (server timestamp)
 ```
 
-A game can be created or updated only by a signed-in user whose linked Lichess
-id is one of its players, and never deleted.
+A game document is created once, by a signed-in user, with a strictly checked
+shape, and is never updated or deleted. The incremental pull on other devices
+pages on `uploadedAt`, so documents arriving out of date order are not missed.
+Because the Lichess link is made client-side, the rules cannot prove that the
+uploader played the game; see the backlog for server-side verification.
+
+The rules have their own tests, run against the Firestore emulator:
+
+```sh
+npm run rules:test
+```

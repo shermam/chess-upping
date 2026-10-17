@@ -5,7 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "players", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
+        { "fieldPath": "uploadedAt", "order": "ASCENDING" }
       ]
     }
   ],

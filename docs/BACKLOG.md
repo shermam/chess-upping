@@ -41,9 +41,15 @@ engine, evaluatedAt }`. The key should be the FEN without the move counters
 
 ## Sync and data
 
-- Correspondence games that were created long ago but finished recently are
-  missed by the `since` cursor, which is based on creation time. Keep a
-  second pass by `lastMoveAt`, or re-query ongoing games at link time.
+- Server-verified Lichess link. Today a client writes its own Lichess id into
+  its profile, so the rules cannot stop a signed-in user from uploading a game
+  for any player. A Cloud Function (Blaze plan) could verify the OAuth token
+  against Lichess and set the id as a custom claim, which rules can trust;
+  then `games` writes could require the claim to be one of the players.
+- Correspondence games that were created more than the overlap window (14
+  days) before they finished are still missed by the `since` cursor, which is
+  based on creation time. Keep a second pass by `lastMoveAt`, or re-query
+  ongoing games at link time.
 - A "previous account" with hundreds of thousands of games would exceed the
   Spark plan's 20k Firestore writes per day on the first upload. The upload
   already resumes across days; if that becomes a real use case, consider

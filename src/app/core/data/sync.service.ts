@@ -13,16 +13,33 @@ export type SyncPhase = 'idle' | 'pulling' | 'downloading' | 'uploading' | 'done
 const WRITE_CHUNK = 200;
 /** How many pending games to push to Firestore per upload round. */
 const UPLOAD_ROUND = 2000;
+/**
+ * The Lichess export filters on creation time and leaves out games still in
+ * progress, so a game created before the cursor but finished after it would
+ * be missed. Re-requesting this much history each time catches games that
+ * finished within the window; the local store de-duplicates the rest.
+ */
+const LICHESS_OVERLAP_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** The Lichess `since` value to request given the newest game already downloaded. */
+export function lichessSince(cursor: number, now: number): number {
+  if (cursor <= 0) return 0;
+  return Math.max(1, Math.min(cursor + 1, now - LICHESS_OVERLAP_MS));
+}
 
 /**
  * Keeps the local store, Lichess and Firestore in step:
  *
- * 1. Pull from Firestore any games for this player newer than the last pull
- *    (covers games uploaded from another device or by an opponent).
- * 2. Stream from Lichess every game created after the newest one known, and
- *    save it locally flagged for upload.
+ * 1. Pull from Firestore any games for this player uploaded since the last
+ *    pull (covers games uploaded from another device or by an opponent).
+ * 2. Stream from Lichess every game created after the newest one this device
+ *    downloaded before (with an overlap window), and save it locally flagged
+ *    for upload.
  * 3. Upload pending games to Firestore in batches. Anything that fails
  *    (quota, offline) stays pending and is retried on the next sync.
+ *
+ * The two cursors are independent on purpose: what someone else uploaded
+ * says nothing about which games this user still has to fetch from Lichess.
  */
 @Injectable({ providedIn: 'root' })
 export class SyncService {
@@ -33,6 +50,8 @@ export class SyncService {
 
   private running: Promise<void> | null = null;
   private abort: AbortController | null = null;
+  /** A link that changed while a sync was running; synced right after. */
+  private queued: LichessLink | null = null;
 
   readonly phase = signal<SyncPhase>('idle');
   readonly pulled = signal(0);
@@ -47,18 +66,30 @@ export class SyncService {
 
   /** Starts a sync unless one is already running. Safe to call repeatedly. */
   sync(link: LichessLink): Promise<void> {
-    if (!this.running) {
-      this.abort = new AbortController();
-      this.running = this.run(link, this.abort.signal).finally(() => {
-        this.running = null;
-        this.abort = null;
-      });
+    if (this.running) {
+      if (this.current?.token !== link.token) this.queued = link;
+      return this.running;
     }
+    this.current = link;
+    this.abort = new AbortController();
+    this.running = this.run(link, this.abort.signal).finally(() => {
+      this.running = null;
+      this.abort = null;
+      this.current = null;
+      const next = this.queued;
+      this.queued = null;
+      if (next) void this.sync(next);
+    });
     return this.running;
   }
 
-  cancel(): void {
+  private current: LichessLink | null = null;
+
+  /** Stops the running sync (if any) and resolves once it has fully stopped. */
+  async cancel(): Promise<void> {
+    this.queued = null;
     this.abort?.abort();
+    await this.running?.catch(() => undefined);
   }
 
   private async run(link: LichessLink, signal: AbortSignal): Promise<void> {
@@ -67,20 +98,24 @@ export class SyncService {
     this.pulled.set(0);
     this.downloaded.set(0);
     this.uploaded.set(0);
+    const warnings: string[] = [];
     try {
       await this.store.load(link.id);
       try {
-        await this.pullFromFirestore(link.id);
+        await this.pullFromFirestore(link.id, warnings);
       } catch (err) {
         // Games uploaded elsewhere are a convenience; Lichess remains the
         // source of truth, so carry on with the download and surface this.
         console.warn('pull from Firestore failed', err);
-        this.warning.set(`Could not pull games from the cloud: ${this.describe(err)}`);
+        warnings.push(`Could not pull games from the cloud: ${this.describe(err)}`);
       }
+      this.throwIfAborted(signal);
       await this.downloadFromLichess(link, signal);
-      await this.uploadPending();
+      this.throwIfAborted(signal);
+      await this.uploadPending(warnings);
       await this.store.refresh();
       this.lastSyncAt.set(Date.now());
+      this.warning.set(warnings.length > 0 ? warnings.join(' ') : null);
       this.phase.set('done');
     } catch (err) {
       if (signal.aborted) {
@@ -93,34 +128,38 @@ export class SyncService {
       // Whatever was saved before the failure is still worth showing.
       await this.store.refresh();
     } finally {
-      this.pending.set(await this.db.countPendingUploads());
+      if (!signal.aborted) this.pending.set(await this.db.countPendingUploads());
     }
   }
 
-  private async pullFromFirestore(lichessId: string): Promise<void> {
+  private throwIfAborted(signal: AbortSignal): void {
+    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  }
+
+  private async pullFromFirestore(lichessId: string, warnings: string[]): Promise<void> {
     this.phase.set('pulling');
     const key = `firestore:${lichessId}`;
-    let cursor = await this.db.getCursor(key);
-    for await (const page of this.repo.pullGames(lichessId, cursor)) {
-      await this.db.putGames(page, 0);
-      cursor = page[page.length - 1].createdAt;
-      await this.db.setCursor(key, cursor);
-      this.pulled.update((n) => n + page.length);
+    let skipped = 0;
+    for await (const page of this.repo.pullGames(lichessId, await this.db.getCursor(key))) {
+      await this.db.putGames(page.games, 0);
+      await this.db.setCursor(key, page.cursor);
+      this.pulled.update((n) => n + page.games.length);
+      skipped += page.skipped;
     }
+    if (skipped > 0) warnings.push(`Ignored ${skipped} malformed cloud game(s).`);
   }
 
   private async downloadFromLichess(link: LichessLink, signal: AbortSignal): Promise<void> {
     this.phase.set('downloading');
     const key = `lichess:${link.id}`;
-    const firestoreCursor = await this.db.getCursor(`firestore:${link.id}`);
-    let cursor = Math.max(await this.db.getCursor(key), firestoreCursor);
-    const since = cursor > 0 ? cursor + 1 : 0;
+    const since = lichessSince(await this.db.getCursor(key), Date.now());
     let chunk: Game[] = [];
     const flush = async () => {
       if (chunk.length === 0) return;
+      // Never write into a store that is being cleared by sign-out/unlink.
+      this.throwIfAborted(signal);
       await this.db.putGames(chunk, 1);
-      cursor = chunk[chunk.length - 1].createdAt;
-      await this.db.setCursor(key, cursor);
+      await this.db.setCursor(key, chunk[chunk.length - 1].createdAt);
       this.downloaded.update((n) => n + chunk.length);
       chunk = [];
     };
@@ -142,19 +181,25 @@ export class SyncService {
     await flush();
   }
 
-  private async uploadPending(): Promise<void> {
+  private async uploadPending(warnings: string[]): Promise<void> {
     this.phase.set('uploading');
+    let rejected = 0;
     for (;;) {
       const pending = await this.db.pendingUploads(UPLOAD_ROUND);
       this.pending.set(await this.db.countPendingUploads());
-      if (pending.length === 0) return;
+      if (pending.length === 0) break;
       const games: Game[] = pending.map(({ pendingUpload: _flag, ...game }) => game);
-      await this.repo.uploadGames(games, async (ids) => {
-        await this.db.markUploaded(ids);
-        this.uploaded.update((n) => n + ids.length);
-        this.pending.update((n) => Math.max(0, n - ids.length));
+      await this.repo.uploadGames(games, async (outcome) => {
+        // Rejected games already exist in the cloud (or can never be
+        // accepted), so they must not stay pending and block the queue.
+        const done = [...outcome.uploaded, ...outcome.rejected];
+        await this.db.markUploaded(done);
+        rejected += outcome.rejected.length;
+        this.uploaded.update((n) => n + outcome.uploaded.length);
+        this.pending.update((n) => Math.max(0, n - done.length));
       });
     }
+    if (rejected > 0) warnings.push(`${rejected} game(s) were already in the cloud.`);
   }
 
   private describe(err: unknown): string {

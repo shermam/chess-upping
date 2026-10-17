@@ -85,14 +85,14 @@ export class App {
   }
 
   protected async unlinkLichess(): Promise<void> {
-    this.sync.cancel();
+    await this.sync.cancel();
     await this.profiles.unlinkLichess();
     await this.db.clear();
     this.store.reset();
   }
 
   protected async signOut(): Promise<void> {
-    this.sync.cancel();
+    await this.sync.cancel();
     await this.auth.signOut();
     await this.db.clear();
     this.store.reset();
