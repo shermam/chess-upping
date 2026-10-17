@@ -51,3 +51,6 @@ ui-debug.log
 
 # Firebase CLI cache
 .firebase/
+
+# Generated at build time
+src/app/version.generated.ts

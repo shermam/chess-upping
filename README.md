@@ -95,6 +95,10 @@ applies to `npm start` while the emulators are up). This needs Java for the Fire
 project's web app config (`GOOGLE_APPLICATION_CREDENTIALS` pointing at a
 service account key, or `firebase login`).
 
+The toolbar shows the short commit hash of the running build. It comes from
+`src/app/version.generated.ts`, written by `scripts/write-version.mjs` before
+every build, serve and test run (the file is not committed).
+
 Other scripts:
 
 ```sh

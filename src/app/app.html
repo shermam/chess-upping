@@ -33,6 +33,9 @@
       </nav>
     }
     <span class="spacer"></span>
+    <span class="version" [matTooltip]="'Build ' + version.commit + ' · ' + version.builtAt">
+      {{ version.commit }}
+    </span>
     @if (user(); as u) {
       @if (link(); as l) {
         <span
