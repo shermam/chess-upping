@@ -122,6 +122,17 @@
       @if (openingName(); as name) {
         <div class="opening">{{ name }}</div>
       }
+      <div class="engine-line">
+        @if (positionEval(); as e) {
+          <span class="score">{{ evalText() }}</span>
+          @if (bestMoveSan(); as best) {
+            <span class="muted">best {{ best }}</span>
+          }
+          <span class="muted">depth {{ e.depth === 99 ? 'final' : e.depth }}</span>
+        } @else {
+          <span class="muted">Engine…</span>
+        }
+      </div>
     </div>
 
     <div class="stats-column">
@@ -203,12 +214,20 @@
                 </td>
                 <td>{{ perfLabel(g.game.perf) }}{{ g.game.rated ? '' : ' · casual' }}</td>
                 <td [class]="g.result">{{ g.result }}</td>
-                <td>
+                <td class="actions">
+                  <a
+                    [routerLink]="['/games', g.game.id]"
+                    matTooltip="Review with the engine"
+                    aria-label="Review game"
+                  >
+                    <mat-icon inline>analytics</mat-icon>
+                  </a>
                   <a
                     [href]="lichessUrl(g.game.id)"
                     target="_blank"
                     rel="noopener"
                     matTooltip="Open on Lichess"
+                    aria-label="Open on Lichess"
                   >
                     <mat-icon inline>open_in_new</mat-icon>
                   </a>

@@ -1,0 +1,150 @@
+@if (game() === undefined) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (game() === null) {
+  <section class="missing">
+    <p>This game is not in your local store yet.</p>
+    <a matButton routerLink="/">Back to the explorer</a>
+  </section>
+} @else if (game(); as g) {
+  <header class="head">
+    <a matIconButton routerLink="/" matTooltip="Back to the explorer" aria-label="Back">
+      <mat-icon>arrow_back</mat-icon>
+    </a>
+    <div class="players">
+      <span class="name">{{ g.white.name }}</span>
+      @if (g.white.rating) {
+        <span class="muted">({{ g.white.rating }})</span>
+      }
+      <span class="vs">vs</span>
+      <span class="name">{{ g.black.name }}</span>
+      @if (g.black.rating) {
+        <span class="muted">({{ g.black.rating }})</span>
+      }
+      <span class="result">{{ result(g) }}</span>
+    </div>
+    <span class="muted meta">
+      {{ perfLabel(g.perf) }}{{ g.rated ? '' : ' · casual' }} ·
+      {{ g.createdAt | date: 'mediumDate' }}
+      @if (g.opening) {
+        · {{ g.opening.name }}
+      }
+    </span>
+    <span class="spacer"></span>
+    <a [href]="'https://lichess.org/' + g.id" target="_blank" rel="noopener" matButton>
+      <mat-icon>open_in_new</mat-icon>
+      Lichess
+    </a>
+  </header>
+
+  @if (evaluating()) {
+    <mat-progress-bar mode="determinate" [value]="(evaluated() / plies().length) * 100" />
+  }
+
+  <section class="viewer">
+    <div class="board-column">
+      <div class="board-row">
+        <div class="eval-bar" [matTooltip]="evalText()" aria-hidden="true">
+          <div class="white" [style.height.%]="whiteBar()"></div>
+        </div>
+        <app-board
+          [fen]="current()!.fen"
+          [orientation]="userColor()"
+          [turnColor]="turn()"
+          [lastMove]="lastMove()"
+        />
+      </div>
+      <div class="controls">
+        <button matIconButton (click)="goTo(0)" [disabled]="ply() === 0" aria-label="Start">
+          <mat-icon>first_page</mat-icon>
+        </button>
+        <button
+          matIconButton
+          (click)="goTo(ply() - 1)"
+          [disabled]="ply() === 0"
+          aria-label="Previous move"
+        >
+          <mat-icon>chevron_left</mat-icon>
+        </button>
+        <button
+          matIconButton
+          (click)="goTo(ply() + 1)"
+          [disabled]="ply() >= plies().length - 1"
+          aria-label="Next move"
+        >
+          <mat-icon>chevron_right</mat-icon>
+        </button>
+        <button
+          matIconButton
+          (click)="goTo(plies().length - 1)"
+          [disabled]="ply() >= plies().length - 1"
+          aria-label="End"
+        >
+          <mat-icon>last_page</mat-icon>
+        </button>
+      </div>
+      <div class="engine">
+        <div class="score">{{ evalText() }}</div>
+        @if (currentEval(); as e) {
+          <div class="muted">
+            depth {{ e.depth === 99 ? 'final' : e.depth }}
+            @if (e.depth < targetDepth() && e.depth !== 99) {
+              (target {{ targetDepth() }})
+            }
+          </div>
+          @if (bestLine().length > 0) {
+            <div class="line">
+              <span class="muted">Best:</span>
+              @for (san of bestLine(); track $index) {
+                <span class="san">{{ san }}</span>
+              }
+            </div>
+          }
+        } @else if (evaluating()) {
+          <div class="muted">Evaluating… {{ evaluated() }} / {{ plies().length }}</div>
+        }
+      </div>
+    </div>
+
+    <div class="moves-column">
+      <table class="moves">
+        <tbody>
+          <tr>
+            <td colspan="5">
+              <button class="ply" [class.active]="ply() === 0" (click)="goTo(0)">
+                Start position
+              </button>
+              <span class="eval">{{ evalFor(plies()[0]) }}</span>
+            </td>
+          </tr>
+          @for (row of rows(); track row.n) {
+            <tr>
+              <td class="n">{{ row.n }}.</td>
+              <td class="san-cell">
+                <button
+                  class="ply"
+                  [class.active]="ply() === row.white.ply"
+                  (click)="goTo(row.white.ply)"
+                >
+                  {{ row.white.san }}
+                </button>
+              </td>
+              <td class="eval">{{ evalFor(row.white) }}</td>
+              <td class="san-cell">
+                @if (row.black) {
+                  <button
+                    class="ply"
+                    [class.active]="ply() === row.black.ply"
+                    (click)="goTo(row.black.ply)"
+                  >
+                    {{ row.black.san }}
+                  </button>
+                }
+              </td>
+              <td class="eval">{{ row.black ? evalFor(row.black) : '' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}

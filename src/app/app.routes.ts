@@ -10,6 +10,16 @@ export const routes: Routes = [
       import('./features/opening-tree/opening-tree.page').then((m) => m.OpeningTreePage),
   },
   {
+    path: 'games/:id',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/game/game.page').then((m) => m.GamePage),
+  },
+  {
+    path: 'engine',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/engine/engine.page').then((m) => m.EnginePage),
+  },
+  {
     path: 'login',
     loadComponent: () => import('./features/login/login.page').then((m) => m.LoginPage),
   },

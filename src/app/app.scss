@@ -67,3 +67,20 @@
   margin: 64px auto;
   padding: 0 16px;
 }
+
+.nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 16px;
+  a.active {
+    background: var(--mat-sys-secondary-container);
+    color: var(--mat-sys-on-secondary-container);
+  }
+}
+
+.small {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+}

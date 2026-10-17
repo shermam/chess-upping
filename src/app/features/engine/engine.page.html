@@ -1,0 +1,134 @@
+<section class="page">
+  <mat-card appearance="outlined">
+    <mat-card-header>
+      <mat-card-title>Engine analysis</mat-card-title>
+      <mat-card-subtitle>
+        Stockfish runs in this browser and evaluates every position of every game you played.
+        Results are stored on this device and shared through the cloud, so a position is never
+        evaluated twice. The job runs while this tab stays open and resumes where it stopped.
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="settings">
+        <mat-form-field appearance="outline">
+          <mat-label>Search depth</mat-label>
+          <mat-select
+            [value]="pool.depth()"
+            (valueChange)="pool.depth.set($event)"
+            [disabled]="running() || paused()"
+          >
+            @for (d of depthOptions; track d) {
+              <mat-option [value]="d">{{ d }}</mat-option>
+            }
+          </mat-select>
+          <mat-hint>16 takes roughly a third of a second per position</mat-hint>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Parallel engines</mat-label>
+          <mat-select [value]="pool.workers()" (valueChange)="pool.workers.set($event)">
+            @for (n of workerOptions; track n) {
+              <mat-option [value]="n">{{ n }}</mat-option>
+            }
+          </mat-select>
+          <mat-hint>One per CPU core, leaving one free keeps the UI smooth</mat-hint>
+        </mat-form-field>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="value">
+            {{ bulk.gamesDone() | number }} / {{ bulk.gamesTotal() | number }}
+          </div>
+          <div class="label">games evaluated at depth {{ pool.depth() }}</div>
+        </div>
+        <div class="stat">
+          <div class="value">{{ evals.storedPositions() | number }}</div>
+          <div class="label">positions stored on this device</div>
+        </div>
+        <div class="stat">
+          <div class="value">{{ evals.pendingUploads() | number }}</div>
+          <div class="label">waiting to upload</div>
+        </div>
+        @if (running() || paused() || bulk.phase() === 'done') {
+          <div class="stat">
+            <div class="value">{{ bulk.rate() | number: '1.0-0' }}</div>
+            <div class="label">positions per minute</div>
+          </div>
+          <div class="stat">
+            <div class="value">{{ bulk.positionsEvaluated() | number }}</div>
+            <div class="label">
+              evaluated this run ({{ bulk.positionsCached() | number }} already known)
+            </div>
+          </div>
+        }
+      </div>
+
+      <mat-progress-bar
+        [mode]="running() && bulk.gamesTotal() === 0 ? 'indeterminate' : 'determinate'"
+        [value]="progress()"
+      />
+      <div class="status">
+        @switch (bulk.phase()) {
+          @case ('running') {
+            Running
+            @if (bulk.currentGame(); as g) {
+              · {{ g.white.name }} vs {{ g.black.name }}
+            }
+            @if (etaMinutes(); as eta) {
+              · {{ formatEta(eta) }} left
+            }
+          }
+          @case ('paused') {
+            Paused
+          }
+          @case ('done') {
+            All games are evaluated at depth {{ bulk.depth() }}.
+          }
+          @case ('error') {
+            <span class="error">Stopped: {{ bulk.error() }}</span>
+          }
+          @default {
+            @if (bulk.gamesTotal() === 0) {
+              No games to evaluate yet. Sync your Lichess games first.
+            } @else {
+              Ready. {{ bulk.gamesLeft() | number }} games to go.
+            }
+          }
+        }
+      </div>
+      @if (evals.uploadError(); as message) {
+        <p class="warning"><mat-icon inline>warning</mat-icon> {{ message }}</p>
+      }
+    </mat-card-content>
+    <mat-card-actions>
+      @if (running()) {
+        <button matButton="filled" (click)="bulk.pause()"><mat-icon>pause</mat-icon> Pause</button>
+        <button matButton (click)="bulk.stop()"><mat-icon>stop</mat-icon> Stop</button>
+      } @else if (paused()) {
+        <button matButton="filled" (click)="bulk.start()">
+          <mat-icon>play_arrow</mat-icon> Resume
+        </button>
+        <button matButton (click)="bulk.stop()"><mat-icon>stop</mat-icon> Stop</button>
+      } @else {
+        <button
+          matButton="filled"
+          (click)="bulk.start()"
+          [disabled]="bulk.gamesTotal() === 0 || bulk.gamesLeft() === 0"
+        >
+          <mat-icon>play_arrow</mat-icon> Evaluate all games
+        </button>
+      }
+      <button matButton (click)="uploadNow()" [disabled]="evals.pendingUploads() === 0">
+        <mat-icon>cloud_upload</mat-icon> Upload now
+      </button>
+      <span class="spacer"></span>
+      <a matButton routerLink="/">Explorer</a>
+    </mat-card-actions>
+  </mat-card>
+
+  <p class="note">
+    Uploads to the shared position table are limited by the free Firestore quota of 20,000 writes a
+    day. Evaluation is never blocked by this: results stay on this device and the rest uploads on
+    later days.
+  </p>
+</section>

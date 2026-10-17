@@ -1,0 +1,56 @@
+.page {
+  max-width: 820px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 16px 0 8px;
+  mat-form-field {
+    flex: 1;
+    min-width: 220px;
+  }
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin: 8px 0 16px;
+}
+
+.stat .value {
+  font: var(--mat-sys-headline-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat .label {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+}
+
+.status {
+  margin-top: 8px;
+  min-height: 24px;
+}
+
+.error {
+  color: var(--mat-sys-error);
+}
+
+.warning {
+  color: var(--mat-sys-tertiary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.note {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+  margin-top: 16px;
+}

@@ -43,6 +43,26 @@ service cloud.firestore {
         && (g.source == null || g.source is string);
     }
 
+    function validEval(e, id) {
+      return e.key == id
+        && e.fen is string
+        && e.fen.size() < 120
+        && (e.cp == null || e.cp is number)
+        && (e.mate == null || e.mate is number)
+        && (e.cp != null || e.mate != null)
+        && e.depth is number
+        && e.depth >= 1
+        && e.depth <= 99
+        && (e.bestMove == null || e.bestMove is string)
+        && e.pv is string
+        && e.pv.size() < 400
+        && e.engine is string
+        && e.nodes is number
+        && e.evaluatedAt is number
+        && e.uploadedBy == request.auth.uid
+        && e.uploadedAt == request.time;
+    }
+
     // Per-user private data: profile, Lichess link and token, later annotations.
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
@@ -63,6 +83,17 @@ service cloud.firestore {
         && request.resource.data.uploadedBy == request.auth.uid
         && request.resource.data.uploadedAt == request.time;
       allow update, delete: if false;
+    }
+
+    // Engine evaluations keyed by position. Anyone signed in may add one, and
+    // an existing record is replaced only by a deeper search.
+    match /positions/{key} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validEval(request.resource.data, key);
+      allow update: if signedIn()
+        && validEval(request.resource.data, key)
+        && request.resource.data.depth > resource.data.depth;
+      allow delete: if false;
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import Dexie, { Table } from 'dexie';
 import { Game, LocalGame } from '../../models/game';
+import { GameEvalRecord, LocalPositionEval, PositionEval } from '../../models/position-eval';
 
 interface MetaRow {
   key: string;
@@ -10,12 +11,20 @@ interface MetaRow {
 class ChessUppingDb extends Dexie {
   games!: Table<LocalGame, string>;
   meta!: Table<MetaRow, string>;
+  positions!: Table<LocalPositionEval, string>;
+  gameEvals!: Table<GameEvalRecord, string>;
 
   constructor() {
     super('chess-upping');
     this.version(1).stores({
       games: 'id, createdAt, *players, pendingUpload',
       meta: 'key',
+    });
+    this.version(2).stores({
+      games: 'id, createdAt, *players, pendingUpload',
+      meta: 'key',
+      positions: 'key, depth, pendingUpload',
+      gameEvals: 'gameId, depth',
     });
   }
 }
@@ -47,6 +56,10 @@ export class LocalDbService {
     });
   }
 
+  getGame(id: string): Promise<LocalGame | undefined> {
+    return this.db.games.get(id);
+  }
+
   gamesForPlayer(lichessId: string): Promise<LocalGame[]> {
     return this.db.games.where('players').equals(lichessId).toArray();
   }
@@ -76,11 +89,71 @@ export class LocalDbService {
     await this.db.meta.put({ key, value });
   }
 
+  // ---- Engine evaluations -------------------------------------------------
+
+  async getPositions(keys: string[]): Promise<Map<string, LocalPositionEval>> {
+    const rows = await this.db.positions.bulkGet(keys);
+    const map = new Map<string, LocalPositionEval>();
+    rows.forEach((row) => {
+      if (row) map.set(row.key, row);
+    });
+    return map;
+  }
+
+  /**
+   * Stores evaluations, keeping whichever is deeper when one already exists.
+   * Returns the evaluations that were actually written.
+   */
+  async putPositions(evals: PositionEval[], pendingUpload: 0 | 1): Promise<PositionEval[]> {
+    if (evals.length === 0) return [];
+    return this.db.transaction('rw', this.db.positions, async () => {
+      const existing = await this.getPositions(evals.map((e) => e.key));
+      const fresh = evals.filter((e) => (existing.get(e.key)?.depth ?? -1) < e.depth);
+      await this.db.positions.bulkPut(fresh.map((e) => ({ ...e, pendingUpload })));
+      return fresh;
+    });
+  }
+
+  pendingPositionUploads(limit: number): Promise<LocalPositionEval[]> {
+    return this.db.positions.where('pendingUpload').equals(1).limit(limit).toArray();
+  }
+
+  countPendingPositionUploads(): Promise<number> {
+    return this.db.positions.where('pendingUpload').equals(1).count();
+  }
+
+  countPositions(): Promise<number> {
+    return this.db.positions.count();
+  }
+
+  async markPositionsUploaded(keys: string[]): Promise<void> {
+    await this.db.positions.where('key').anyOf(keys).modify({ pendingUpload: 0 });
+  }
+
+  getGameEval(gameId: string): Promise<GameEvalRecord | undefined> {
+    return this.db.gameEvals.get(gameId);
+  }
+
+  async gameEvalDepths(): Promise<Map<string, number>> {
+    const rows = await this.db.gameEvals.toArray();
+    return new Map(rows.map((r) => [r.gameId, r.depth]));
+  }
+
+  async setGameEval(record: GameEvalRecord): Promise<void> {
+    await this.db.gameEvals.put(record);
+  }
+
   /** Wipes the local store (used when the user signs out or unlinks Lichess). */
   async clear(): Promise<void> {
-    await this.db.transaction('rw', this.db.games, this.db.meta, async () => {
-      await this.db.games.clear();
-      await this.db.meta.clear();
-    });
+    await this.db.transaction(
+      'rw',
+      [this.db.games, this.db.meta, this.db.positions, this.db.gameEvals],
+      async () => {
+        await this.db.games.clear();
+        await this.db.meta.clear();
+        await this.db.positions.clear();
+        await this.db.gameEvals.clear();
+      },
+    );
   }
 }

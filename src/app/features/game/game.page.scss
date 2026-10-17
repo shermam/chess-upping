@@ -1,0 +1,160 @@
+:host {
+  display: block;
+  padding: 16px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.missing {
+  max-width: 480px;
+  margin: 64px auto;
+  text-align: center;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.players {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font: var(--mat-sys-title-medium);
+}
+
+.vs,
+.muted {
+  color: var(--mat-sys-on-surface-variant);
+  font-weight: 400;
+}
+
+.result {
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.meta {
+  font: var(--mat-sys-body-medium);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.viewer {
+  display: grid;
+  grid-template-columns: minmax(300px, 560px) minmax(260px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .viewer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.board-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.board-row app-board {
+  flex: 1;
+  min-width: 0;
+}
+
+.eval-bar {
+  width: 18px;
+  background: #403d39;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  .white {
+    background: #fff;
+    transition: height 200ms ease;
+  }
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.engine {
+  margin-top: 8px;
+  min-height: 72px;
+}
+
+.score {
+  font: var(--mat-sys-headline-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.san {
+  font-weight: 500;
+}
+
+.moves-column {
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+}
+
+table.moves {
+  width: auto;
+  border-collapse: collapse;
+  font: var(--mat-sys-body-medium);
+}
+
+td {
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.n {
+  color: var(--mat-sys-on-surface-variant);
+  width: 2.5em;
+  text-align: right;
+}
+
+.eval {
+  color: var(--mat-sys-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  width: 4.5em;
+  font-size: 0.9em;
+}
+
+.ply {
+  font: inherit;
+  font-weight: 500;
+  background: none;
+  border: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: inherit;
+  &:hover {
+    background: var(--mat-sys-surface-container-high);
+  }
+  &.active {
+    background: var(--mat-sys-primary-container);
+    color: var(--mat-sys-on-primary-container);
+  }
+}

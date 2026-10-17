@@ -191,3 +191,22 @@ a mat-icon {
   vertical-align: middle;
   color: var(--mat-sys-primary);
 }
+
+.engine-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 6px;
+  min-height: 22px;
+  .score {
+    font: var(--mat-sys-title-medium);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.actions {
+  white-space: nowrap;
+  a + a {
+    margin-left: 8px;
+  }
+}
