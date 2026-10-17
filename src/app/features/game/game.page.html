@@ -25,8 +25,8 @@
     <span class="muted meta">
       {{ perfLabel(g.perf) }}{{ g.rated ? '' : ' · casual' }} ·
       {{ g.createdAt | date: 'mediumDate' }}
-      @if (g.opening) {
-        · {{ g.opening.name }}
+      @if (openingName(); as name) {
+        · {{ name }}
       }
     </span>
     <span class="spacer"></span>

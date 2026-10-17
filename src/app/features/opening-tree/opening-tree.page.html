@@ -101,6 +101,21 @@
       />
     </mat-form-field>
 
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="effectiveMode()"
+      (change)="mergeTranspositions.set($event.value === 'position')"
+      aria-label="Tree mode"
+      [matTooltip]="
+        indexReady()
+          ? 'Group games by the position reached (merges transpositions) or by exact move order'
+          : 'Indexing positions… ' + (indexProgress() | number: '1.0-0') + '%'
+      "
+    >
+      <mat-button-toggle value="position" [disabled]="!indexReady()">By position</mat-button-toggle>
+      <mat-button-toggle value="order">By move order</mat-button-toggle>
+    </mat-button-toggle-group>
+
     <mat-form-field appearance="outline" subscriptSizing="dynamic" class="compact">
       <mat-label>Sort moves by</mat-label>
       <mat-select [value]="sortBy()" (valueChange)="sortBy.set($event)">
@@ -123,8 +138,20 @@
         [turnColor]="turn()"
         [dests]="dests()"
         [lastMove]="lastMove()"
+        [refresh]="boardRefresh()"
         (move)="onBoardMove($event)"
       />
+      @if (pendingPromotion()) {
+        <div class="promotion" role="dialog" aria-label="Choose promotion piece">
+          <span>Promote to</span>
+          @for (p of promotionPieces; track p) {
+            <button matButton (click)="promote(p)">{{ pieceName(p) }}</button>
+          }
+          <button matIconButton (click)="cancelPromotion()" aria-label="Cancel">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      }
       <div class="controls">
         <button
           matIconButton
@@ -331,6 +358,83 @@
           <p class="muted">
             Showing the {{ recentGames().length }} most recent of {{ atLine().length | number }}.
           </p>
+        }
+      }
+
+      <h3 class="explorer-head">
+        Compare with
+        <mat-button-toggle-group
+          hideSingleSelectionIndicator
+          [value]="explorerSource()"
+          (change)="explorerSource.set($event.value)"
+          aria-label="Reference database"
+        >
+          <mat-button-toggle value="off">Off</mat-button-toggle>
+          <mat-button-toggle value="masters">Masters</mat-button-toggle>
+          <mat-button-toggle value="lichess">Lichess players</mat-button-toggle>
+        </mat-button-toggle-group>
+      </h3>
+      @if (explorerSource() !== 'off') {
+        @if (explorerError(); as message) {
+          <p class="muted">{{ message }}</p>
+        } @else if (explorerResult(); as r) {
+          @if (r.moves.length === 0) {
+            <p class="muted">No games in this database reach this position.</p>
+          } @else {
+            <p class="muted">
+              {{ explorerTotal(r) | number }} games
+              @if (r.opening) {
+                · {{ r.opening.eco }} {{ r.opening.name }}
+              }
+              · results shown from your side ({{ color() }})
+            </p>
+            <table class="moves explorer">
+              <thead>
+                <tr>
+                  <th>Move</th>
+                  <th class="num">Games</th>
+                  <th class="num">%</th>
+                  <th>Win / draw / loss</th>
+                  @if (explorerSource() === 'lichess') {
+                    <th class="num">Avg rating</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of r.moves; track m.uci) {
+                  <tr (click)="play(m.san)" tabindex="0" (keydown.enter)="play(m.san)">
+                    <td class="san-cell">{{ m.san }}</td>
+                    <td class="num">{{ explorerTotal(m) | number }}</td>
+                    <td class="num">{{ percent(explorerTotal(m), explorerTotal(r)) }}</td>
+                    <td>
+                      <div class="bar">
+                        <span class="win" [style.width.%]="explorerWin(m)">
+                          @if (explorerWin(m) >= 12) {
+                            {{ explorerWin(m) }}%
+                          }
+                        </span>
+                        <span class="draw" [style.width.%]="explorerDraw(m)">
+                          @if (explorerDraw(m) >= 12) {
+                            {{ explorerDraw(m) }}%
+                          }
+                        </span>
+                        <span class="loss" [style.width.%]="explorerLoss(m)">
+                          @if (explorerLoss(m) >= 12) {
+                            {{ explorerLoss(m) }}%
+                          }
+                        </span>
+                      </div>
+                    </td>
+                    @if (explorerSource() === 'lichess') {
+                      <td class="num">{{ m.averageRating ?? '–' }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        } @else {
+          <p class="muted">Loading…</p>
         }
       }
     </div>

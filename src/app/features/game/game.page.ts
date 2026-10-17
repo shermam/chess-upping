@@ -21,6 +21,7 @@ import { UserProfileService } from '../../core/auth/user-profile.service';
 import { EvalStoreService } from '../../core/data/eval-store.service';
 import { LocalDbService } from '../../core/data/local-db.service';
 import { EnginePoolService } from '../../core/engine/engine-pool.service';
+import { OpeningsService } from '../../core/openings/openings.service';
 import { Color, Game, PERF_LABELS } from '../../models/game';
 import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
 import { BoardComponent } from '../opening-tree/board.component';
@@ -95,6 +96,18 @@ export class GamePage {
   private readonly evals = inject(EvalStoreService);
   private readonly pool = inject(EnginePoolService);
   private readonly profiles = inject(UserProfileService);
+  private readonly openings = inject(OpeningsService);
+
+  /** Opening name from the ECO dataset (position based), falling back to the Lichess tag. */
+  protected readonly openingName = computed(() => {
+    const g = this.game();
+    if (!g) return null;
+    if (this.openings.ready()) {
+      const hit = this.openings.nameForKeys(this.plies().map((p) => p.key));
+      if (hit) return `${hit.eco} ${hit.name}`;
+    }
+    return g.opening ? `${g.opening.eco} ${g.opening.name}` : null;
+  });
 
   /** Route parameter, bound by `withComponentInputBinding`. */
   readonly id = input.required<string>();
@@ -157,6 +170,7 @@ export class GamePage {
   private loadAbort: AbortController | null = null;
 
   constructor() {
+    void this.openings.load();
     effect(() => {
       const id = this.id();
       untracked(() => void this.load(id));

@@ -22,17 +22,16 @@ Still to do:
 
 ## Opening tree
 
-- Transposition-aware tree: today nodes are move sequences (like
-  openingtree.com); merging by position would combine transpositions.
-- Choose the promotion piece when a promotion is played on the board (queen
-  is assumed now).
-- Show the opening name from Lichess's ECO data when no game at the node
-  carries one.
-- Sort options for the move table (by games, by score, by last played).
-- Date range filter, and opponent rating range filter.
-- Highlight moves whose score is poor compared with the alternatives.
-- Compare "my games" against the Lichess masters or Lichess player database at
-  the same position (Lichess opening explorer API).
+Done: transposition-aware tree, promotion piece choice, ECO opening names by
+position, sort options, result / date / opponent rating filters, score
+highlighting, Lichess masters and player database comparison, engine eval
+bar per move, average thinking time per move.
+
+- Remember filter choices between visits.
+- Show the user's own line as a repertoire tree (collapsed view of the most
+  played continuations several moves deep).
+- Rating buckets for the Lichess player database comparison (today it uses
+  the user's time-control filter and all ratings).
 
 ## Sync and data
 

@@ -17,6 +17,7 @@ import { UserProfileService } from './core/auth/user-profile.service';
 import { BulkEvalService } from './core/data/bulk-eval.service';
 import { GamesStoreService } from './core/data/games-store.service';
 import { LocalDbService } from './core/data/local-db.service';
+import { PositionIndexService } from './core/data/position-index.service';
 import { SyncService } from './core/data/sync.service';
 import { FirebaseService } from './core/firebase/firebase.service';
 
@@ -44,6 +45,7 @@ export class App {
   protected readonly bulk = inject(BulkEvalService);
   private readonly store = inject(GamesStoreService);
   private readonly db = inject(LocalDbService);
+  private readonly index = inject(PositionIndexService);
   private readonly router = inject(Router);
 
   protected readonly user = this.auth.user;
@@ -93,6 +95,7 @@ export class App {
     await this.profiles.unlinkLichess();
     await this.db.clear();
     this.store.reset();
+    this.index.reset();
   }
 
   protected async signOut(): Promise<void> {
@@ -101,6 +104,7 @@ export class App {
     await this.auth.signOut();
     await this.db.clear();
     this.store.reset();
+    this.index.reset();
     await this.router.navigateByUrl('/login');
   }
 }

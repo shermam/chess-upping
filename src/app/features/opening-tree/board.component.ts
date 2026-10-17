@@ -44,6 +44,8 @@ export class BoardComponent {
   readonly turnColor = input<Color>('white');
   readonly dests = input<Map<Key, Key[]>>(new Map());
   readonly lastMove = input<Key[] | null>(null);
+  /** Bump to force the board to redraw from `fen` (e.g. after a cancelled move). */
+  readonly refresh = input(0);
   readonly move = output<BoardMove>();
 
   private readonly host = viewChild.required<ElementRef<HTMLElement>>('board');
@@ -51,6 +53,8 @@ export class BoardComponent {
 
   private readonly config = computed<Config>(() => ({
     fen: this.fen(),
+    // Read so a refresh re-runs this computed; chessground ignores unknown keys.
+    ...(this.refresh() >= 0 ? {} : {}),
     orientation: this.orientation(),
     turnColor: this.turnColor(),
     lastMove: this.lastMove() ?? undefined,
