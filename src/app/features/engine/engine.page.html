@@ -81,6 +81,9 @@
           @case ('paused') {
             Paused
           }
+          @case ('stopping') {
+            Stopping after the current positions…
+          }
           @case ('done') {
             All games are evaluated at depth {{ bulk.depth() }}.
           }
@@ -98,6 +101,11 @@
       </div>
       @if (evals.uploadError(); as message) {
         <p class="warning"><mat-icon inline>warning</mat-icon> {{ message }}</p>
+      }
+      @if (pool.lastError(); as message) {
+        <p class="warning">
+          <mat-icon inline>warning</mat-icon> Engine worker problem: {{ message }}
+        </p>
       }
     </mat-card-content>
     <mat-card-actions>

@@ -88,7 +88,7 @@ export class App {
   }
 
   protected async unlinkLichess(): Promise<void> {
-    this.bulk.stop();
+    await this.bulk.stop();
     await this.sync.cancel();
     await this.profiles.unlinkLichess();
     await this.db.clear();
@@ -96,7 +96,7 @@ export class App {
   }
 
   protected async signOut(): Promise<void> {
-    this.bulk.stop();
+    await this.bulk.stop();
     await this.sync.cancel();
     await this.auth.signOut();
     await this.db.clear();

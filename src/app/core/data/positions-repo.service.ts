@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   documentId,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
@@ -13,7 +14,14 @@ import {
 } from 'firebase/firestore';
 import { PositionEval } from '../../models/position-eval';
 import { FirebaseService } from '../firebase/firebase.service';
-import { UploadOutcome } from './games-repo.service';
+export interface EvalUploadOutcome {
+  /** Keys written by this call. */
+  uploaded: string[];
+  /** Keys the cloud already holds at the same or a deeper depth. */
+  superseded: string[];
+  /** Keys refused for another reason; they stay pending for a later attempt. */
+  failed: string[];
+}
 
 /** Firestore allows at most 30 values in an `in` filter. */
 const IN_LIMIT = 30;
@@ -86,26 +94,31 @@ export class PositionsRepoService {
    */
   async uploadEvals(
     evals: PositionEval[],
-    onChunk: (o: UploadOutcome) => Promise<void>,
+    onChunk: (o: EvalUploadOutcome) => Promise<void>,
   ): Promise<void> {
     for (let i = 0; i < evals.length; i += BATCH_SIZE) {
       const chunk = evals.slice(i, i + BATCH_SIZE);
       const batch = writeBatch(this.firebase.firestore);
       for (const e of chunk) batch.set(doc(this.positions, e.key), this.uploadDoc(e));
-      let outcome: UploadOutcome;
+      let outcome: EvalUploadOutcome;
       try {
         await batch.commit();
-        outcome = { uploaded: chunk.map((e) => e.key), rejected: [] };
+        outcome = { uploaded: chunk.map((e) => e.key), superseded: [], failed: [] };
       } catch (err) {
         if (!isPermissionDenied(err)) throw err;
-        outcome = { uploaded: [], rejected: [] };
+        outcome = { uploaded: [], superseded: [], failed: [] };
         for (const e of chunk) {
           try {
             await setDoc(doc(this.positions, e.key), this.uploadDoc(e));
             outcome.uploaded.push(e.key);
           } catch (inner) {
             if (!isPermissionDenied(inner)) throw inner;
-            outcome.rejected.push(e.key);
+            // Superseded only when the cloud really holds a deeper (or equal)
+            // record; anything else stays pending for a later attempt.
+            const existing = await getDoc(doc(this.positions, e.key));
+            const cloudDepth = (existing.data()?.['depth'] as number | undefined) ?? -1;
+            if (cloudDepth >= e.depth) outcome.superseded.push(e.key);
+            else outcome.failed.push(e.key);
           }
         }
       }

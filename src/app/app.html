@@ -24,7 +24,7 @@
         >
         <a matButton routerLink="/engine" routerLinkActive="active">
           Engine
-          @if (bulk.phase() === 'running') {
+          @if (bulk.phase() === 'running' || bulk.phase() === 'stopping') {
             <mat-icon class="spin small">autorenew</mat-icon>
           }
         </a>

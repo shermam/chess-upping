@@ -6,12 +6,15 @@ export type EvalPriority = 'high' | 'low';
 interface Task {
   fen: string;
   depth: number;
+  retries: number;
   resolve: (r: EngineResult) => void;
   reject: (e: Error) => void;
 }
 
 const ENGINE_URL = '/engine/stockfish-19-lite-single.js';
 const SETTINGS_KEY = 'engine-settings';
+/** How many times a task is handed to a fresh worker after one died under it. */
+const MAX_RETRIES = 2;
 export const DEPTH_OPTIONS = [10, 12, 14, 16, 18, 20, 22] as const;
 
 function defaultWorkers(): number {
@@ -19,12 +22,21 @@ function defaultWorkers(): number {
   return Math.max(1, Math.min(4, cores - 1));
 }
 
+function nearestDepth(depth: number): number {
+  return DEPTH_OPTIONS.reduce((best, d) =>
+    Math.abs(d - depth) < Math.abs(best - depth) ? d : best,
+  );
+}
+
 function loadSettings(): { depth: number; workers: number } {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<{ depth: number; workers: number }>;
-      return { depth: parsed.depth ?? 16, workers: parsed.workers ?? defaultWorkers() };
+      return {
+        depth: nearestDepth(parsed.depth ?? 16),
+        workers: parsed.workers ?? defaultWorkers(),
+      };
     }
   } catch {
     // Storage unavailable: fall back to defaults.
@@ -34,8 +46,8 @@ function loadSettings(): { depth: number; workers: number } {
 
 /**
  * A pool of Stockfish workers with a two-level priority queue. Interactive
- * requests (the position on screen) jump ahead of bulk analysis, and bulk
- * callers keep only a few tasks queued so the switch is immediate.
+ * requests (the position on screen) are served before bulk analysis. A worker
+ * that dies is dropped and its task handed to a replacement.
  */
 @Injectable({ providedIn: 'root' })
 export class EnginePoolService {
@@ -54,6 +66,8 @@ export class EnginePoolService {
   readonly queued = signal(0);
   readonly completed = signal(0);
   readonly running = computed(() => this.active() > 0 || this.queued() > 0);
+  /** Last worker failure, for the UI; cleared when a worker succeeds again. */
+  readonly lastError = signal<string | null>(null);
 
   constructor() {
     effect(() => {
@@ -68,33 +82,22 @@ export class EnginePoolService {
 
   evaluate(fen: string, depth: number, priority: EvalPriority): Promise<EngineResult> {
     return new Promise<EngineResult>((resolve, reject) => {
-      (priority === 'high' ? this.high : this.low).push({ fen, depth, resolve, reject });
-      this.queued.set(this.high.length + this.low.length);
-      this.ensureStarted();
-      this.pump();
+      this.enqueue({ fen, depth, retries: 0, resolve, reject }, priority);
     });
   }
 
-  /** Terminates all workers; the next request starts fresh ones. */
-  shutdown(): void {
-    for (const instance of this.instances) instance.terminate();
-    this.instances.length = 0;
-    this.started = false;
-    for (const task of [...this.high, ...this.low]) task.reject(new Error('Engine pool shut down'));
-    this.high.length = 0;
-    this.low.length = 0;
-    this.queued.set(0);
-    this.active.set(0);
-  }
-
-  private ensureStarted(): void {
-    if (this.started) return;
+  private enqueue(task: Task, priority: EvalPriority): void {
+    (priority === 'high' ? this.high : this.low).push(task);
+    this.queued.set(this.high.length + this.low.length);
     this.started = true;
-    this.resize();
+    this.pump();
   }
 
   /** Brings the number of live workers in line with the setting. */
   private resize(): void {
+    for (let i = this.instances.length - 1; i >= 0; i--) {
+      if (this.instances[i].dead) this.instances.splice(i, 1);
+    }
     while (this.instances.length < this.workers()) {
       this.instances.push(new EngineInstance(ENGINE_URL));
     }
@@ -111,19 +114,33 @@ export class EnginePoolService {
     if (!this.started) return;
     this.resize();
     for (const instance of this.instances) {
-      if (instance.busy) continue;
+      if (instance.busy || instance.dead) continue;
       const task = this.high.shift() ?? this.low.shift();
       if (!task) break;
       this.queued.set(this.high.length + this.low.length);
       this.active.update((n) => n + 1);
-      instance
-        .evaluate(task.fen, task.depth)
-        .then(task.resolve, task.reject)
-        .finally(() => {
+      instance.evaluate(task.fen, task.depth).then(
+        (result) => {
           this.active.update((n) => n - 1);
           this.completed.update((n) => n + 1);
+          this.lastError.set(null);
+          task.resolve(result);
           this.pump();
-        });
+        },
+        (err: Error) => {
+          this.active.update((n) => n - 1);
+          if (instance.dead && task.retries < MAX_RETRIES) {
+            // The worker died under this task: hand it to a replacement.
+            this.lastError.set(err.message);
+            task.retries++;
+            this.enqueue(task, 'high');
+          } else {
+            this.lastError.set(err.message);
+            task.reject(err);
+            this.pump();
+          }
+        },
+      );
     }
   }
 }

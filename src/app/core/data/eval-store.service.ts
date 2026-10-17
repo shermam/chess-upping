@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { FirebaseService } from '../firebase/firebase.service';
 import { Chess } from 'chess.js';
 import {
   ENGINE_NAME,
@@ -31,6 +32,7 @@ export class EvalStoreService {
   private readonly db = inject(LocalDbService);
   private readonly repo = inject(PositionsRepoService);
   private readonly pool = inject(EnginePoolService);
+  private readonly firebase = inject(FirebaseService);
 
   private readonly inflight = new Map<string, Promise<PositionEval>>();
   private uploading: Promise<void> | null = null;
@@ -99,14 +101,20 @@ export class EvalStoreService {
     }
 
     const toCompute = missing.filter((k) => !results.has(k));
-    if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    await Promise.all(
-      toCompute.map(async (key) => {
+    // Feed the pool a few positions at a time so a cancelled job stops within
+    // a couple of searches instead of after the whole game.
+    const width = Math.max(2, this.pool.workers() * 2);
+    let next = 0;
+    const lane = async () => {
+      while (next < toCompute.length) {
+        if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        const key = toCompute[next++];
         const e = await this.evaluateOne(key, unique.get(key)!, depth, priority);
         results.set(key, e);
         options.onResult?.(e, 'engine');
-      }),
-    );
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(width, toCompute.length) }, lane));
     return results;
   }
 
@@ -172,6 +180,8 @@ export class EvalStoreService {
   private async runUpload(): Promise<void> {
     const pausedUntil = this.uploadPausedUntil();
     if (pausedUntil !== null && Date.now() < pausedUntil) return;
+    // Nothing can be written without a signed-in user; keep the rows pending.
+    if (!this.firebase.auth.currentUser) return;
     this.uploadPausedUntil.set(null);
     this.uploadError.set(null);
     try {
@@ -179,11 +189,19 @@ export class EvalStoreService {
         const pending = await this.db.pendingPositionUploads(UPLOAD_ROUND);
         this.pendingUploads.set(await this.db.countPendingPositionUploads());
         if (pending.length === 0) return;
+        let failed = 0;
         await this.repo.uploadEvals(pending.map(stripLocal), async (outcome) => {
-          const done = [...outcome.uploaded, ...outcome.rejected];
+          const done = [...outcome.uploaded, ...outcome.superseded];
           await this.db.markPositionsUploaded(done);
           this.pendingUploads.update((n) => Math.max(0, n - done.length));
+          failed += outcome.failed.length;
         });
+        if (failed > 0) {
+          this.uploadError.set(
+            `${failed} evaluation(s) were refused by the server and stay pending.`,
+          );
+          return;
+        }
       }
     } catch (err) {
       if (isQuotaExceeded(err)) {

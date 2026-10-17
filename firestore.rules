@@ -44,21 +44,25 @@ service cloud.firestore {
     }
 
     function validEval(e, id) {
-      return e.key == id
+      return e.keys().hasOnly(['key', 'fen', 'cp', 'mate', 'depth', 'bestMove', 'pv',
+          'engine', 'nodes', 'evaluatedAt', 'uploadedBy', 'uploadedAt'])
+        && e.key == id
         && e.fen is string
         && e.fen.size() < 120
-        && (e.cp == null || e.cp is number)
-        && (e.mate == null || e.mate is number)
-        && (e.cp != null || e.mate != null)
-        && e.depth is number
+        && (e.cp == null || (e.cp is int && e.cp > -100000 && e.cp < 100000))
+        && (e.mate == null || (e.mate is int && e.mate > -1000 && e.mate < 1000))
+        && ((e.cp == null) != (e.mate == null))
+        && e.depth is int
         && e.depth >= 1
         && e.depth <= 99
-        && (e.bestMove == null || e.bestMove is string)
+        && (e.bestMove == null || (e.bestMove is string && e.bestMove.size() <= 5))
         && e.pv is string
         && e.pv.size() < 400
         && e.engine is string
-        && e.nodes is number
-        && e.evaluatedAt is number
+        && e.engine.size() < 40
+        && e.nodes is int
+        && e.nodes >= 0
+        && e.evaluatedAt is int
         && e.uploadedBy == request.auth.uid
         && e.uploadedAt == request.time;
     }

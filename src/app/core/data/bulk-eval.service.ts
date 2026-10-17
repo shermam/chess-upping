@@ -1,12 +1,13 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Chess } from 'chess.js';
 import { Game } from '../../models/game';
+import { positionKey } from '../../models/position-eval';
 import { EnginePoolService } from '../engine/engine-pool.service';
 import { EvalStoreService } from './eval-store.service';
 import { GamesStoreService } from './games-store.service';
 import { LocalDbService } from './local-db.service';
 
-export type BulkPhase = 'idle' | 'running' | 'paused' | 'done' | 'error';
+export type BulkPhase = 'idle' | 'running' | 'paused' | 'stopping' | 'done' | 'error';
 
 /** Replays a game and returns the full FEN after every ply, starting position included. */
 export function gamePositions(game: Game): string[] {
@@ -39,6 +40,7 @@ export class BulkEvalService {
   private stopRequested = false;
   private pauseRequested = false;
   private loop: Promise<void> | null = null;
+  private abort: AbortController | null = null;
 
   readonly phase = signal<BulkPhase>('idle');
   readonly depth = signal(0);
@@ -70,12 +72,15 @@ export class BulkEvalService {
 
   start(): void {
     if (this.loop) {
+      // Resume, unless a stop is still winding down.
+      if (this.stopRequested) return;
       this.pauseRequested = false;
       this.phase.set('running');
       return;
     }
     this.stopRequested = false;
     this.pauseRequested = false;
+    this.abort = new AbortController();
     this.error.set(null);
     this.positionsEvaluated.set(0);
     this.positionsCached.set(0);
@@ -94,10 +99,17 @@ export class BulkEvalService {
     this.phase.set('paused');
   }
 
-  stop(): void {
+  /** Stops the job and resolves once the loop has fully exited. */
+  async stop(): Promise<void> {
     this.stopRequested = true;
     this.pauseRequested = false;
-    if (!this.loop) this.phase.set('idle');
+    this.abort?.abort();
+    if (!this.loop) {
+      this.phase.set('idle');
+      return;
+    }
+    this.phase.set('stopping');
+    await this.loop.catch(() => undefined);
   }
 
   private async waitWhilePaused(): Promise<void> {
@@ -123,11 +135,12 @@ export class BulkEvalService {
         const fens = gamePositions(game);
         let computed = 0;
         await this.evals.getOrEvaluate(fens, depth, 'low', {
+          signal: this.abort?.signal,
           onResult: (_e, source) => {
             if (source === 'engine') computed++;
           },
         });
-        const cached = fens.length - computed;
+        const cached = Math.max(0, new Set(fens.map(positionKey)).size - computed);
         this.positionsEvaluated.update((n) => n + computed);
         this.positionsCached.update((n) => n + cached);
         await this.db.setGameEval({
@@ -144,10 +157,14 @@ export class BulkEvalService {
           void this.evals.uploadPending();
         }
       }
-      await this.evals.uploadPending();
+      if (!this.stopRequested) await this.evals.uploadPending();
       await this.evals.refreshCounts();
       this.phase.set(this.stopRequested ? 'idle' : 'done');
     } catch (err) {
+      if (this.stopRequested) {
+        this.phase.set('idle');
+        return;
+      }
       console.error('bulk evaluation failed', err);
       this.error.set(err instanceof Error ? err.message : String(err));
       this.phase.set('error');

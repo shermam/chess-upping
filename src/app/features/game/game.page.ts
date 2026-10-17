@@ -153,6 +153,9 @@ export class GamePage {
     return rows;
   });
 
+  private loadRequest = 0;
+  private loadAbort: AbortController | null = null;
+
   constructor() {
     effect(() => {
       const id = this.id();
@@ -161,15 +164,20 @@ export class GamePage {
   }
 
   private async load(id: string): Promise<void> {
+    // A newer navigation wins: earlier loads must not touch the state again.
+    const request = ++this.loadRequest;
+    this.loadAbort?.abort();
+    const abort = (this.loadAbort = new AbortController());
     this.ply.set(0);
     this.evalMap.set(new Map());
     const game = await this.db.getGame(id);
+    if (request !== this.loadRequest) return;
     this.game.set(game ?? null);
     if (!game) return;
-    await this.evaluateAll(replay(game));
+    await this.evaluateAll(replay(game), request, abort.signal);
   }
 
-  private async evaluateAll(plies: Ply[]): Promise<void> {
+  private async evaluateAll(plies: Ply[], request: number, signal: AbortSignal): Promise<void> {
     this.evaluating.set(true);
     try {
       await this.evals.getOrEvaluate(
@@ -177,19 +185,22 @@ export class GamePage {
         this.pool.depth(),
         'high',
         {
-          onResult: (e) =>
+          signal,
+          onResult: (e) => {
+            if (request !== this.loadRequest) return;
             this.evalMap.update((m) => {
               const next = new Map(m);
               next.set(e.key, e);
               return next;
-            }),
+            });
+          },
         },
       );
       void this.evals.uploadPending();
     } catch (err) {
-      console.error('game evaluation failed', err);
+      if (!signal.aborted) console.error('game evaluation failed', err);
     } finally {
-      this.evaluating.set(false);
+      if (request === this.loadRequest) this.evaluating.set(false);
     }
   }
 
