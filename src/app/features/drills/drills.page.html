@@ -1,0 +1,101 @@
+<section class="page">
+  <header class="head">
+    <h1>Drills</h1>
+    <span class="muted">
+      Positions from your own games where you have a habitual move. Play it as fast as you can; the
+      slowest ones come first, and spaced repetition brings each one back when it is due.
+    </span>
+  </header>
+
+  <section class="filters">
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="colorChoice()"
+      (change)="colorChoice.set($event.value)"
+      aria-label="Colour"
+    >
+      <mat-button-toggle value="both">Both colours</mat-button-toggle>
+      <mat-button-toggle value="white">As white</mat-button-toggle>
+      <mat-button-toggle value="black">As black</mat-button-toggle>
+    </mat-button-toggle-group>
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="minGames()"
+      (change)="minGames.set($event.value)"
+      aria-label="Minimum games"
+    >
+      <mat-button-toggle [value]="3">3+ games</mat-button-toggle>
+      <mat-button-toggle [value]="5">5+ games</mat-button-toggle>
+      <mat-button-toggle [value]="10">10+ games</mat-button-toggle>
+    </mat-button-toggle-group>
+    <span class="spacer"></span>
+    <span class="muted">
+      {{ queue().due.length | number }} due · {{ queue().fresh.length | number }} new ·
+      {{ queue().later | number }} scheduled · {{ drills.reviewedToday() | number }} done today
+    </span>
+  </section>
+
+  @if (!indexReady()) {
+    <mat-progress-bar mode="determinate" [value]="indexProgress()" />
+    <p class="muted">Indexing your games…</p>
+  } @else if (totalCards() === 0) {
+    <p class="muted">No positions qualify yet. Lower the minimum games, or sync more games.</p>
+  } @else if (!card()) {
+    <mat-card appearance="outlined">
+      <mat-card-content>
+        <p>Nothing left for now. {{ queue().later | number }} positions are scheduled for later.</p>
+      </mat-card-content>
+    </mat-card>
+  } @else if (card(); as c) {
+    <section class="drill">
+      <div class="board-column">
+        <app-board
+          [fen]="boardFen()"
+          [orientation]="c.color"
+          [turnColor]="turn()"
+          [dests]="dests()"
+          [lastMove]="highlight()"
+          (move)="onBoardMove($event)"
+        />
+      </div>
+      <div class="side">
+        <h2>Your move as {{ c.color }}</h2>
+        @if (openingName(); as name) {
+          <div class="opening">{{ name }}</div>
+        }
+        <p class="muted line">{{ lineText() || 'Start position' }}</p>
+        <p class="muted">
+          You reached this position {{ c.games }} times and played the same move in
+          {{ c.share * 100 | number: '1.0-0' }}% of them
+          @if (c.avgTimeSec !== null) {
+            , taking {{ formatSeconds(c.avgTimeSec) }} on average
+          }
+          .
+        </p>
+
+        @if (outcome(); as o) {
+          <div class="result" [class.correct]="o.correct" [class.wrong]="!o.correct">
+            @if (o.correct) {
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ c.expected }} in {{ formatSeconds(o.seconds) }}</span>
+            } @else {
+              <mat-icon>cancel</mat-icon>
+              <span>You played {{ o.played }}; your usual move is {{ c.expected }}.</span>
+            }
+          </div>
+          <div class="actions">
+            <button matButton="filled" (click)="next()">
+              <mat-icon>arrow_forward</mat-icon> Next (Enter)
+            </button>
+            <a matButton routerLink="/" [queryParams]="explorerParams(c)">Explore this line</a>
+          </div>
+        } @else {
+          <p>Play your usual move on the board.</p>
+          <div class="actions">
+            <button matButton (click)="skip()">Skip</button>
+          </div>
+        }
+      </div>
+    </section>
+  }
+</section>

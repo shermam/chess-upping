@@ -87,7 +87,21 @@
   display: flex;
   justify-content: center;
   gap: 4px;
-  margin-top: 8px;
+  margin: 8px 0;
+}
+
+.badge {
+  margin-left: 2px;
+  font-weight: 700;
+  &.inaccuracy {
+    color: #2a7fb0;
+  }
+  &.mistake {
+    color: #a86f00;
+  }
+  &.blunder {
+    color: #b24a00;
+  }
 }
 
 .engine {
@@ -157,4 +171,8 @@ td {
     background: var(--mat-sys-primary-container);
     color: var(--mat-sys-on-primary-container);
   }
+}
+
+app-note-box {
+  margin-bottom: 8px;
 }

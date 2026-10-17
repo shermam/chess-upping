@@ -201,6 +201,12 @@
       @if (openingName(); as name) {
         <div class="opening">{{ name }}</div>
       }
+      <app-note-box
+        kind="position"
+        [target]="currentKey()"
+        label="Your notes on this position"
+        class="tree-note"
+      />
       <div class="engine-line">
         @if (positionEval(); as e) {
           <span class="score">{{ evalText() }}</span>

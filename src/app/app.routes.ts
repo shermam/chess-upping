@@ -15,6 +15,16 @@ export const routes: Routes = [
     loadComponent: () => import('./features/game/game.page').then((m) => m.GamePage),
   },
   {
+    path: 'mistakes',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/mistakes/mistakes.page').then((m) => m.MistakesPage),
+  },
+  {
+    path: 'drills',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/drills/drills.page').then((m) => m.DrillsPage),
+  },
+  {
     path: 'engine',
     canActivate: [authGuard],
     loadComponent: () => import('./features/engine/engine.page').then((m) => m.EnginePage),

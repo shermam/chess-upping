@@ -22,6 +22,8 @@
           [routerLinkActiveOptions]="{ exact: true }"
           >Explorer</a
         >
+        <a matButton routerLink="/mistakes" routerLinkActive="active">Mistakes</a>
+        <a matButton routerLink="/drills" routerLinkActive="active">Drills</a>
         <a matButton routerLink="/engine" routerLinkActive="active">
           Engine
           @if (bulk.phase() === 'running' || bulk.phase() === 'stopping') {

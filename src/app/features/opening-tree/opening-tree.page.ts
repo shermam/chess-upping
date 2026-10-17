@@ -6,6 +6,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
   untracked,
 } from '@angular/core';
@@ -38,6 +39,7 @@ import { LichessAuthService } from '../../core/lichess/lichess-auth.service';
 import { Color, PERF_LABELS, STANDARD_PERFS } from '../../models/game';
 import { formatSeconds } from '../../models/move-times';
 import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
+import { NoteBoxComponent } from '../../shared/note-box.component';
 import { BoardComponent, BoardMove } from './board.component';
 import {
   DEFAULT_FILTERS,
@@ -96,6 +98,7 @@ const GAME_LIST_LIMIT = 50;
     MatTooltipModule,
     RouterLink,
     BoardComponent,
+    NoteBoxComponent,
   ],
   templateUrl: './opening-tree.page.html',
   styleUrl: './opening-tree.page.scss',
@@ -111,6 +114,9 @@ export class OpeningTreePage {
   private readonly openings = inject(OpeningsService);
   private readonly explorer = inject(LichessExplorerService);
   protected readonly sync = inject(SyncService);
+
+  /** Optional `?line=e4,e5,Nf3` query parameter: open the explorer at this line. */
+  readonly lineParam = input<string | undefined>(undefined, { alias: 'line' });
 
   /** Group games by position reached (merging transpositions) instead of by move order. */
   protected readonly mergeTranspositions = signal(true);
@@ -298,6 +304,26 @@ export class OpeningTreePage {
 
   constructor() {
     void this.openings.load();
+    effect(() => {
+      const param = this.lineParam();
+      if (param === undefined) return;
+      const line = param.split(',').filter(Boolean);
+      untracked(() => {
+        // Only accept a replayable line; otherwise start from the initial position.
+        const chess = new Chess();
+        const ok: string[] = [];
+        for (const san of line) {
+          try {
+            ok.push(chess.move(san).san);
+          } catch {
+            break;
+          }
+        }
+        this.line.set(ok);
+        // Make sure the tree is viewed from the side to move's opponent... no:
+        // the explorer stays on the user's chosen colour; the line is shared.
+      });
+    });
     // Build the position index for the current games in the background.
     effect(() => {
       const games = this.store.games();

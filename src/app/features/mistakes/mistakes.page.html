@@ -1,0 +1,163 @@
+<section class="page">
+  <header class="head">
+    <h1>Mistakes</h1>
+    <span class="muted">
+      Moves that cost at least ten points of winning chance, judged from the stored engine
+      evaluations. Evaluate more games on the Engine page to cover more of your play.
+    </span>
+  </header>
+
+  <section class="filters">
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="color()"
+      (change)="color.set($event.value)"
+      aria-label="Colour"
+    >
+      <mat-button-toggle value="both">Both colours</mat-button-toggle>
+      <mat-button-toggle value="white">As white</mat-button-toggle>
+      <mat-button-toggle value="black">As black</mat-button-toggle>
+    </mat-button-toggle-group>
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="severity()"
+      (change)="severity.set($event.value)"
+      aria-label="Severity"
+    >
+      <mat-button-toggle value="mistakes">Mistakes and blunders</mat-button-toggle>
+      <mat-button-toggle value="all">Include inaccuracies</mat-button-toggle>
+    </mat-button-toggle-group>
+    <span class="spacer"></span>
+    <button matButton (click)="rerun()" [disabled]="finder.running()">
+      <mat-icon>refresh</mat-icon> Re-analyse
+    </button>
+  </section>
+
+  @if (finder.running()) {
+    <mat-progress-bar mode="determinate" [value]="finder.progress()" />
+  }
+
+  @if (finder.report(); as report) {
+    <div class="stats">
+      <div class="stat">
+        <div class="value">{{ report.gamesAnalysed | number }} / {{ totalGames() | number }}</div>
+        <div class="label">games with evaluations</div>
+      </div>
+      <div class="stat">
+        <div class="value">{{ judgedMoves() | number }}</div>
+        <div class="label">of your moves judged</div>
+      </div>
+      <div class="stat">
+        <div class="value blunder">{{ counts().blunder | number }}</div>
+        <div class="label">blunders ??</div>
+      </div>
+      <div class="stat">
+        <div class="value mistake">{{ counts().mistake | number }}</div>
+        <div class="label">mistakes ?</div>
+      </div>
+      @if (severity() === 'all') {
+        <div class="stat">
+          <div class="value inaccuracy">{{ counts().inaccuracy | number }}</div>
+          <div class="label">inaccuracies ?!</div>
+        </div>
+      }
+    </div>
+
+    @if (report.gamesAnalysed === 0) {
+      <p class="muted">
+        No evaluated games yet. <a routerLink="/engine">Run the engine</a> on your games first.
+      </p>
+    } @else {
+      <h2>Positions you keep getting wrong</h2>
+      @if (repeated().length === 0) {
+        <p class="muted">No position with two or more errors under these filters.</p>
+      } @else {
+        <table class="list">
+          <thead>
+            <tr>
+              <th>Opening</th>
+              <th>Move</th>
+              <th class="num">Times</th>
+              <th>Played</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of repeated(); track g.key) {
+              <tr>
+                <td>{{ g.opening }}</td>
+                <td>{{ g.moveNumber }}</td>
+                <td class="num">{{ g.count }}</td>
+                <td>
+                  @for (m of g.items.slice(0, 4); track m.game.id + m.ply) {
+                    <a
+                      [routerLink]="['/games', m.game.id]"
+                      [queryParams]="{ ply: m.ply }"
+                      [class]="'chip ' + m.judgement"
+                      >{{ m.san }} {{ symbol[m.judgement] }}</a
+                    >
+                  }
+                  @if (g.items.length > 4) {
+                    <span class="muted">+{{ g.items.length - 4 }}</span>
+                  }
+                </td>
+                <td>
+                  <a routerLink="/" [queryParams]="explorerLink(g.lineBefore)" matButton>Explore</a>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+
+      <h2>By opening</h2>
+      <mat-accordion>
+        @for (g of byOpening(); track g.opening) {
+          <mat-expansion-panel>
+            <mat-expansion-panel-header>
+              <mat-panel-title>{{ g.opening }}</mat-panel-title>
+              <mat-panel-description>
+                <span class="blunder">{{ g.blunders }} ??</span>
+                <span class="mistake">{{ g.mistakes }} ?</span>
+                @if (severity() === 'all') {
+                  <span class="inaccuracy">{{ g.inaccuracies }} ?!</span>
+                }
+              </mat-panel-description>
+            </mat-expansion-panel-header>
+            <table class="list">
+              <tbody>
+                @for (m of g.items; track m.game.id + m.ply) {
+                  <tr>
+                    <td>{{ m.game.createdAt | date: 'mediumDate' }}</td>
+                    <td>vs {{ m.color === 'white' ? m.game.black.name : m.game.white.name }}</td>
+                    <td>
+                      <span [class]="'chip ' + m.judgement"
+                        >{{ moveLabel(m) }} {{ symbol[m.judgement] }}</span
+                      >
+                    </td>
+                    <td class="num">−{{ m.drop | number: '1.0-0' }}%</td>
+                    <td>
+                      @if (bestSan(m); as best) {
+                        <span class="muted">best {{ best }}</span>
+                      }
+                    </td>
+                    <td>
+                      <a
+                        [routerLink]="['/games', m.game.id]"
+                        [queryParams]="{ ply: m.ply }"
+                        matButton
+                        >Review</a
+                      >
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </mat-expansion-panel>
+        }
+      </mat-accordion>
+    }
+  } @else if (!finder.running()) {
+    <p class="muted">Sync your games first.</p>
+  }
+</section>
