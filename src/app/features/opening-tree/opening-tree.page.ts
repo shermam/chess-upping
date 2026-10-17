@@ -48,6 +48,8 @@ import {
 } from './tree';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Candidate moves evaluated per node, most played first. */
+const MAX_CANDIDATE_EVALS = 12;
 export const PERIOD_OPTIONS = [
   { value: 0, label: 'All time' },
   { value: 30, label: 'Last month' },
@@ -167,7 +169,15 @@ export class OpeningTreePage {
   protected readonly timeLabel = computed(() => (this.userToMove() ? 'Your time' : 'Their time'));
   /** Engine evaluations of the positions after each candidate move, keyed by SAN. */
   protected readonly candidateEvals = signal<ReadonlyMap<string, PositionEval>>(new Map());
-  private candidateRequest = 0;
+  /** The moves in the table, as a string so the effect below re-runs only when the set changes. */
+  private readonly candidateSans = computed(() =>
+    this.stats()
+      .slice(0, MAX_CANDIDATE_EVALS)
+      .map((s) => s.san)
+      .join(' '),
+  );
+  private candidateAbort: AbortController | null = null;
+  private candidateFen = '';
   protected readonly recentGames = computed(() => this.atLine().slice(0, GAME_LIST_LIMIT));
   protected readonly filteredCount = computed(() => this.prepared().length);
 
@@ -228,12 +238,19 @@ export class OpeningTreePage {
     effect((onCleanup) => {
       const fen = this.fen();
       const linked = !!this.link();
-      untracked(() => {
-        this.positionEval.set(null);
-        this.candidateEvals.set(new Map());
-      });
+      untracked(() => this.positionEval.set(null));
       if (!linked) return;
       const timer = setTimeout(() => void this.evaluateCurrent(fen), 250);
+      onCleanup(() => clearTimeout(timer));
+    });
+    effect((onCleanup) => {
+      const fen = this.fen();
+      const sans = this.candidateSans();
+      if (!this.link()) return;
+      const timer = setTimeout(
+        () => void this.evaluateCandidates(fen, sans ? sans.split(' ') : []),
+        300,
+      );
       onCleanup(() => clearTimeout(timer));
     });
   }
@@ -247,38 +264,48 @@ export class OpeningTreePage {
     } catch (err) {
       console.warn('position evaluation failed', err);
     }
-    void this.evaluateCandidates(fen, request);
   }
 
-  /** Evaluates the position after each move in the table, filling the eval column as results arrive. */
-  private async evaluateCandidates(fen: string, request: number): Promise<void> {
-    const candidateRequest = ++this.candidateRequest;
-    const sans = this.stats().map((s) => s.san);
+  /**
+   * Evaluates the position after each move in the table at low priority,
+   * filling the eval column as results arrive. Re-run when the board or the
+   * set of moves changes (filters, colour); only moves still missing an eval
+   * are requested, and a superseded request is aborted so quick navigation
+   * does not pile up searches.
+   */
+  private async evaluateCandidates(fen: string, sans: string[]): Promise<void> {
+    this.candidateAbort?.abort();
+    const abort = (this.candidateAbort = new AbortController());
+    if (fen !== this.candidateFen) {
+      this.candidateFen = fen;
+      this.candidateEvals.set(new Map());
+    }
+    const known = this.candidateEvals();
     const fenBySan = new Map<string, string>();
     for (const san of sans) {
+      if (known.has(san)) continue;
       try {
         const chess = new Chess(fen);
         chess.move(san);
         fenBySan.set(san, chess.fen());
       } catch {
-        // A move the engine's FEN cannot replay: leave its eval blank.
+        // A move that cannot be replayed from this position: leave it blank.
       }
     }
+    if (fenBySan.size === 0) return;
     const sanByKey = new Map([...fenBySan].map(([san, f]) => [positionKey(f), san]));
-    if (fenBySan.size === 0 || request !== this.evalRequest) return;
-    const found = new Map<string, PositionEval>();
     try {
       await this.evals.getOrEvaluate([...fenBySan.values()], this.pool.depth(), 'low', {
+        signal: abort.signal,
         onResult: (e) => {
-          if (candidateRequest !== this.candidateRequest) return;
+          if (abort.signal.aborted) return;
           const san = sanByKey.get(e.key);
           if (!san) return;
-          found.set(san, e);
-          this.candidateEvals.set(new Map(found));
+          this.candidateEvals.update((m) => new Map(m).set(san, e));
         },
       });
     } catch (err) {
-      console.warn('candidate evaluation failed', err);
+      if (!abort.signal.aborted) console.warn('candidate evaluation failed', err);
     }
   }
 

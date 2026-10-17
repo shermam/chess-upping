@@ -82,6 +82,8 @@ describe('games/{id}', () => {
       updateDoc(doc(bob, 'games', 'game0001'), { clocks: [1, 2], winner: 'black', ...stamp }),
     );
     await assertFails(updateDoc(doc(bob, 'games', 'game0001'), { clocks: 'x', ...stamp }));
+    await assertFails(updateDoc(doc(bob, 'games', 'game0001'), { clocks: [], ...stamp }));
+    await assertFails(updateDoc(doc(bob, 'games', 'game0001'), { clocks: ['a', 'b'], ...stamp }));
     await assertFails(
       updateDoc(doc(bob, 'games', 'game0001'), {
         clocks: [1, 2],

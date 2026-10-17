@@ -30,6 +30,12 @@ export interface LichessPlayerJson {
   name?: string;
 }
 
+/** Clock readings are kept only when complete: a dropped entry would shift every later ply. */
+function validClocks(clocks: unknown): number[] | null {
+  if (!Array.isArray(clocks) || clocks.length === 0) return null;
+  return clocks.every((c) => Number.isInteger(c) && c >= 0) ? (clocks as number[]) : null;
+}
+
 function toPlayer(p: LichessPlayerJson | undefined): GamePlayer {
   if (!p) return { name: 'Anonymous', id: null, rating: null, ratingDiff: null };
   if (p.user) {
@@ -77,7 +83,7 @@ export function parseLichessGame(raw: LichessGameJson): Game | null {
       : null,
     clock: raw.clock ? { initial: raw.clock.initial, increment: raw.clock.increment } : null,
     source: raw.source ?? null,
-    clocks: Array.isArray(raw.clocks) ? raw.clocks.filter((c) => Number.isInteger(c)) : null,
+    clocks: validClocks(raw.clocks),
   };
 }
 

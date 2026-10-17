@@ -69,7 +69,8 @@ export class LocalDbService {
       games.forEach((g, i) => {
         const row = existing[i];
         if (!row) inserts.push({ ...g, pendingUpload: 1 });
-        else if (row.clocks === null && g.clocks !== null) {
+        else if (row.clocks == null && g.clocks !== null) {
+          // Rows written before clocks were collected have no property at all.
           updates.push({ ...row, clocks: g.clocks, pendingUpload: 1 });
         }
       });

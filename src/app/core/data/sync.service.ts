@@ -165,20 +165,27 @@ export class SyncService {
     if (downloadedBefore || pulledBefore) {
       this.phase.set('downloading');
       let chunk: Game[] = [];
+      let newest = 0;
       const flush = async () => {
         if (chunk.length === 0) return;
         this.throwIfAborted(signal);
-        await this.db.mergeClocks(chunk);
-        this.downloaded.update((n) => n + chunk.length);
+        const changed = await this.db.mergeClocks(chunk);
+        this.downloaded.update((n) => n + changed);
         chunk = [];
       };
       for await (const raw of this.lichess.streamGames(link.username, link.token, 0, signal)) {
         const game = parseLichessGame(raw);
-        if (!game || !game.clocks) continue;
+        if (!game) continue;
+        newest = Math.max(newest, game.createdAt);
+        if (!game.clocks) continue;
         chunk.push(game);
         if (chunk.length >= WRITE_CHUNK) await flush();
       }
       await flush();
+      // The whole history has just been streamed, so the regular download
+      // can continue from here instead of repeating it.
+      const cursorKey = `lichess:${link.id}`;
+      if (newest > (await this.db.getCursor(cursorKey))) await this.db.setCursor(cursorKey, newest);
     }
     await this.db.setCursor(flagKey, Date.now());
   }

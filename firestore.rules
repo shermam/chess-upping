@@ -44,8 +44,12 @@ service cloud.firestore {
         && validClocks(g.get('clocks', null));
     }
 
+    // Rules cannot iterate a list; checking the ends and the size keeps out
+    // the obvious garbage.
     function validClocks(c) {
-      return c == null || (c is list && c.size() <= 1000);
+      return c == null
+        || (c is list && c.size() <= 1000
+          && (c.size() == 0 || (c[0] is int && c[c.size() - 1] is int)));
     }
 
     function validEval(e, id) {
@@ -95,6 +99,7 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.get('clocks', null) == null
         && request.resource.data.clocks is list
+        && request.resource.data.clocks.size() > 0
         && validClocks(request.resource.data.clocks)
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['clocks', 'uploadedBy', 'uploadedAt'])

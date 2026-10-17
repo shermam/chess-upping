@@ -40,8 +40,12 @@ describe('parseLichessGame', () => {
     expect(game!.clocks).toEqual([30000, 30000, 29800, 29500, 29600, 29100, 29400, 28800]);
   });
 
-  it('stores null clocks when Lichess sends none', () => {
+  it('stores null clocks when Lichess sends none, an empty list, or a broken list', () => {
     expect(parseLichessGame({ ...sample, clocks: undefined })!.clocks).toBeNull();
+    expect(parseLichessGame({ ...sample, clocks: [] })!.clocks).toBeNull();
+    expect(
+      parseLichessGame({ ...sample, clocks: [100, null as unknown as number, 90] })!.clocks,
+    ).toBeNull();
   });
 
   it('drops non-standard variants and move-less games', () => {
