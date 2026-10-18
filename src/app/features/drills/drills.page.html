@@ -184,6 +184,12 @@
             <button matButton (click)="skip()">Skip</button>
           </div>
         }
+        <app-note-box
+          kind="position"
+          [target]="noteKey()"
+          [label]="noteLabel()"
+          class="drill-note"
+        />
       </div>
     </section>
   }
