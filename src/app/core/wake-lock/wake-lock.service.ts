@@ -4,6 +4,8 @@ import { EvalStoreService } from '../data/eval-store.service';
 import { SyncService } from '../data/sync.service';
 
 const SETTING_KEY = 'keep-awake';
+/** After a refused request, try again this often while work is still running. */
+const RETRY_MS = 30_000;
 
 interface WakeLockSentinelLike {
   released: boolean;
@@ -38,6 +40,7 @@ export class WakeLockService {
 
   private sentinel: WakeLockSentinelLike | null = null;
   private requesting = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** User preference; on by default. */
   readonly enabled = signal(loadSetting());
@@ -102,15 +105,31 @@ export class WakeLockService {
       // Typically NotAllowedError: low battery, a policy, or no visible document.
       this.error.set(err instanceof Error ? err.message : String(err));
       this.held.set(false);
+      // The condition may clear (charger plugged in, tab visible again): keep trying
+      // while the work is still running.
+      this.scheduleRetry();
     } finally {
       this.requesting = false;
     }
   }
 
+  private scheduleRetry(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (this.wanted() && !this.held()) void this.acquire();
+    }, RETRY_MS);
+  }
+
   private async release(): Promise<void> {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
     const sentinel = this.sentinel;
     this.sentinel = null;
     this.held.set(false);
+    this.error.set(null);
     if (sentinel && !sentinel.released) {
       try {
         await sentinel.release();
