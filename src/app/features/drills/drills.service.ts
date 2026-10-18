@@ -2,12 +2,12 @@ import { Injectable, computed, effect, inject, signal, untracked } from '@angula
 import { Unsubscribe, collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { AuthService } from '../../core/auth/auth.service';
 import { FirebaseService } from '../../core/firebase/firebase.service';
-import { DrillCard } from './cards';
+import { DrillCard, cardStateId } from './cards';
 import { DrillState, Grade, review } from './scheduler';
 
 /**
  * Keeps the spaced-repetition state of drill cards under `users/{uid}/drills`
- * (document id = position key) and decides what to practise next: due cards
+ * (document id = `cardStateId`) and decides what to practise next: due cards
  * first, then new ones in the order the card builder proposes.
  */
 @Injectable({ providedIn: 'root' })
@@ -85,17 +85,19 @@ export class DrillsService {
     const fresh: DrillCard[] = [];
     let later = 0;
     for (const card of cards) {
-      const s = states.get(card.key);
+      const s = states.get(cardStateId(card));
       if (!s) fresh.push(card);
       else if (s.due <= now) due.push(card);
       else later++;
     }
-    due.sort((a, b) => (states.get(a.key)?.due ?? 0) - (states.get(b.key)?.due ?? 0));
+    due.sort(
+      (a, b) => (states.get(cardStateId(a))?.due ?? 0) - (states.get(cardStateId(b))?.due ?? 0),
+    );
     if (due.length + fresh.length <= 1) return { due, fresh, later };
     const order = (list: DrillCard[]) => [
-      ...list.filter((c) => c.key !== last && !skipped.has(c.key)),
-      ...list.filter((c) => c.key !== last && skipped.has(c.key)),
-      ...list.filter((c) => c.key === last),
+      ...list.filter((c) => cardStateId(c) !== last && !skipped.has(cardStateId(c))),
+      ...list.filter((c) => cardStateId(c) !== last && skipped.has(cardStateId(c))),
+      ...list.filter((c) => cardStateId(c) === last),
     ];
     return { due: order(due), fresh: order(fresh), later };
   }
@@ -104,13 +106,14 @@ export class DrillsService {
     if (!this.loaded()) return;
     const uid = this.auth.user()?.uid;
     const now = Date.now();
-    const next = review(this.states().get(card.key) ?? null, card.key, grade, now);
+    const id = cardStateId(card);
+    const next = review(this.states().get(id) ?? null, id, grade, now);
     // Optimistic local update so the queue moves on immediately.
-    this.states.update((m) => new Map(m).set(card.key, next));
-    this.lastShown.set(card.key);
+    this.states.update((m) => new Map(m).set(id, next));
+    this.lastShown.set(id);
     if (!uid) return;
     try {
-      await setDoc(doc(this.firebase.firestore, 'users', uid, 'drills', card.key), next);
+      await setDoc(doc(this.firebase.firestore, 'users', uid, 'drills', id), next);
     } catch (err) {
       console.error('drill state save failed', err);
     }

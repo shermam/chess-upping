@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../../models/game';
 import { gameKeys } from '../../core/data/position-index.service';
-import { buildCards } from './cards';
+import {
+  DrillCard,
+  buildCards,
+  buildMistakeCards,
+  buildReplies,
+  cardStateId,
+  withoutBadHabits,
+} from './cards';
+import { Mistake } from '../../core/data/mistake-finder.service';
 
 function game(
   id: string,
@@ -70,5 +78,65 @@ describe('buildCards', () => {
     expect(byKey.has('Bb5:2') || byKey.has('Bc4:2')).toBe(true);
     expect(cards.every((c) => c.color === 'white')).toBe(true);
     expect(cards[0].line).toEqual(['e4', 'e5']);
+  });
+});
+
+describe('buildReplies', () => {
+  it("finds the opponent's most common reply at each position", () => {
+    const replies = buildReplies(games, 'me', keysFor, {
+      minGames: 2,
+      minShare: 0.5,
+      colors: ['white'],
+    });
+    // After 1.e4 the opponents answered e5 twice and c5 once.
+    const afterE4 = [...replies.entries()].find(([k]) => k.startsWith('rnbqkbnr_pppppppp_8_8_4P3'));
+    expect(afterE4?.[1]).toEqual({ san: 'e5', games: 3, share: 2 / 3 });
+  });
+});
+
+describe('buildMistakeCards', () => {
+  const base = {
+    game: games[0],
+    color: 'white' as const,
+    drop: 35,
+    bestMove: 'g1f3',
+    bestSan: 'Nf3',
+    lineBefore: ['e4', 'e5'],
+    opening: "C20 King's Pawn Game",
+  };
+  const mistakes: Mistake[] = [
+    { ...base, ply: 3, san: 'Qh5', judgement: 'mistake', keyBefore: 'K1' },
+    { ...base, ply: 3, san: 'Ke2', judgement: 'blunder', keyBefore: 'K1' },
+    { ...base, ply: 5, san: 'h4', judgement: 'inaccuracy', keyBefore: 'K2' },
+    { ...base, ply: 7, san: 'a4', judgement: 'blunder', keyBefore: 'K3', color: 'black' },
+  ];
+  it('groups by position, skips inaccuracies, and respects colour', () => {
+    const cards = buildMistakeCards(mistakes, ['white', 'black']);
+    expect(cards.map((c) => [c.key, c.games, c.judgement, c.expected, c.played])).toEqual([
+      ['K1', 2, 'blunder', 'Nf3', ['Qh5', 'Ke2']],
+      ['K3', 1, 'blunder', 'Nf3', ['a4']],
+    ]);
+    expect(buildMistakeCards(mistakes, ['black']).map((c) => c.key)).toEqual(['K3']);
+    expect(cardStateId(cards[0])).toBe('m:K1');
+    expect(cardStateId({ kind: 'repertoire', key: 'K1' })).toBe('K1');
+  });
+
+  it('drops repertoire cards whose habit is a recorded mistake', () => {
+    const mistakeCards = buildMistakeCards(mistakes, ['white', 'black']);
+    const habit = (key: string, expected: string): DrillCard => ({
+      ...mistakeCards[0],
+      kind: 'repertoire',
+      key,
+      expected,
+      played: [],
+    });
+    const kept = withoutBadHabits(
+      [habit('K1', 'Qh5'), habit('K1', 'Nf3'), habit('K9', 'Qh5')],
+      mistakeCards,
+    );
+    expect(kept.map((c) => [c.key, c.expected])).toEqual([
+      ['K1', 'Nf3'],
+      ['K9', 'Qh5'],
+    ]);
   });
 });
