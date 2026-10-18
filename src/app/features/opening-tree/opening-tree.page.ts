@@ -39,6 +39,7 @@ import { LichessAuthService } from '../../core/lichess/lichess-auth.service';
 import { Color, PERF_LABELS, STANDARD_PERFS } from '../../models/game';
 import { formatSeconds } from '../../models/move-times';
 import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
+import { EnginePanelComponent } from '../../shared/engine-panel.component';
 import { NoteBoxComponent } from '../../shared/note-box.component';
 import { BoardComponent, BoardMove } from './board.component';
 import {
@@ -99,6 +100,7 @@ const GAME_LIST_LIMIT = 50;
     RouterLink,
     BoardComponent,
     NoteBoxComponent,
+    EnginePanelComponent,
   ],
   templateUrl: './opening-tree.page.html',
   styleUrl: './opening-tree.page.scss',

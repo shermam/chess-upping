@@ -23,6 +23,7 @@ import { PositionIndexService } from '../../core/data/position-index.service';
 import { OpeningsService } from '../../core/openings/openings.service';
 import { Color } from '../../models/game';
 import { formatSeconds } from '../../models/move-times';
+import { EnginePanelComponent } from '../../shared/engine-panel.component';
 import { BoardComponent, BoardMove } from '../opening-tree/board.component';
 import { DrillCard, buildCards } from './cards';
 import { DrillsService } from './drills.service';
@@ -47,6 +48,7 @@ interface Outcome {
     MatProgressBarModule,
     RouterLink,
     BoardComponent,
+    EnginePanelComponent,
   ],
   templateUrl: './drills.page.html',
   styleUrl: './drills.page.scss',
@@ -84,6 +86,8 @@ export class DrillsPage {
   /** The card on the board; chosen when the previous one is answered. */
   protected readonly card = signal<DrillCard | null>(null);
   protected readonly outcome = signal<Outcome | null>(null);
+  /** Moves explored on the board after answering, from the position after the expected move. */
+  protected readonly explore = signal<string[]>([]);
   private startedAt = 0;
 
   protected readonly fen = computed(() => {
@@ -92,11 +96,9 @@ export class DrillsPage {
       ? `${c.key.replace(/_/g, '/')} 0 1`
       : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   });
-  private readonly position = computed(() => new Chess(this.fen()));
   protected readonly dests = computed(() => {
     const map = new Map<Key, Key[]>();
-    if (this.outcome()) return map;
-    for (const m of this.position().moves({ verbose: true })) {
+    for (const m of new Chess(this.boardFen()).moves({ verbose: true })) {
       const list = map.get(m.from as Key) ?? [];
       list.push(m.to as Key);
       map.set(m.from as Key, list);
@@ -104,7 +106,7 @@ export class DrillsPage {
     return map;
   });
   protected readonly turn = computed<Color>(() =>
-    this.position().turn() === 'w' ? 'white' : 'black',
+    new Chess(this.boardFen()).turn() === 'w' ? 'white' : 'black',
   );
   /** After answering, highlight the expected move on the board. */
   protected readonly highlight = computed<Key[] | null>(() => {
@@ -118,12 +120,13 @@ export class DrillsPage {
     }
   });
   protected readonly boardFen = computed(() => {
-    // Show the expected move played once answered.
+    // Once answered, show the expected move played, plus anything explored after it.
     const c = this.card();
     if (!c || !this.outcome()) return this.fen();
     try {
       const chess = new Chess(this.fen());
       chess.move(c.expected);
+      for (const san of this.explore()) chess.move(san);
       return chess.fen();
     } catch {
       return this.fen();
@@ -159,12 +162,37 @@ export class DrillsPage {
   private show(card: DrillCard | null): void {
     this.card.set(card);
     this.outcome.set(null);
+    this.explore.set([]);
     this.startedAt = Date.now();
+  }
+
+  /** Plays a move from the engine panel: an answer before, exploration after. */
+  protected playSan(san: string): void {
+    try {
+      const m = new Chess(this.boardFen()).move(san);
+      this.onBoardMove({ from: m.from as Key, to: m.to as Key });
+    } catch {
+      // Not legal here.
+    }
   }
 
   protected onBoardMove({ from, to }: BoardMove): void {
     const card = this.card();
-    if (!card || this.outcome()) return;
+    if (!card) return;
+    if (this.outcome()) {
+      // Free exploration after the answer.
+      try {
+        const m = new Chess(this.boardFen()).move({
+          from: from as Square,
+          to: to as Square,
+          promotion: 'q',
+        });
+        this.explore.update((e) => [...e, m.san]);
+      } catch {
+        // Illegal.
+      }
+      return;
+    }
     let san: string;
     try {
       san = new Chess(this.fen()).move({

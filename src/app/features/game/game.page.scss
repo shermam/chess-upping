@@ -176,3 +176,15 @@ td {
 app-note-box {
   margin-bottom: 8px;
 }
+
+.variation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 8px;
+  font: var(--mat-sys-body-medium);
+  .san {
+    font-weight: 500;
+  }
+}

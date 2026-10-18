@@ -201,6 +201,7 @@
       @if (openingName(); as name) {
         <div class="opening">{{ name }}</div>
       }
+      <app-engine-panel [fen]="fen()" (play)="play($event)" />
       <app-note-box
         kind="position"
         [target]="currentKey()"

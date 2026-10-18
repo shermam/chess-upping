@@ -52,6 +52,12 @@ Live site: https://chess-upping.web.app
   spaced-repetition cards (slowest first); progress lives under the user's
   private `drills` subcollection. Private notes can be kept on any position
   or game (`users/{uid}/notes`).
+- **Live engine.** Every board (explorer, game viewer, drills) has an engine
+  switch and a choice of one to five lines. A dedicated Stockfish worker keeps
+  analysing the position on screen and streams its principal variations;
+  clicking the first move of a line plays it. The viewer lets you play moves
+  on the board to explore a variation from any point of the game, and drills
+  allow free exploration after an answer.
 - **Keep awake.** While the engine, a Lichess download or an upload is
   running, the app holds a Screen Wake Lock so the computer does not go to
   sleep (a switch on the Engine page turns this off). The lock only works
