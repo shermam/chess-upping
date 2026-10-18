@@ -55,9 +55,11 @@ Live site: https://chess-upping.web.app
   the grader looks the two positions up in the evaluation table and only
   searches when they are new. Sequence mode plays the opponent's reply
   automatically (the most common one from the user's games for repertoire
-  cards, the engine's line for mistakes) for up to three moves. Progress lives under the user's
-  private `drills` subcollection. Private notes can be kept on any position
-  or game (`users/{uid}/notes`).
+  cards, the engine's line for mistakes) for up to three moves. Progress
+  lives under the user's private `drills` subcollection. Private notes can be
+  kept on any position or game (`users/{uid}/notes`); the explorer, the game
+  viewer and the drill page all show the same note box, so a lesson learnt in
+  a drill can be written down on the spot.
 - **Live engine.** Every board (explorer, game viewer, drills) has an engine
   switch and a choice of one to five lines. A dedicated Stockfish worker keeps
   analysing the position on screen and streams its principal variations;

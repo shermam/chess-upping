@@ -30,6 +30,7 @@ import { Color } from '../../models/game';
 import { formatSeconds } from '../../models/move-times';
 import { positionKey } from '../../models/position-eval';
 import { EnginePanelComponent } from '../../shared/engine-panel.component';
+import { NoteBoxComponent } from '../../shared/note-box.component';
 import { BoardComponent, BoardMove } from '../opening-tree/board.component';
 import {
   CardKind,
@@ -80,6 +81,7 @@ const REPLY_DELAY_MS = 450;
     RouterLink,
     BoardComponent,
     EnginePanelComponent,
+    NoteBoxComponent,
   ],
   templateUrl: './drills.page.html',
   styleUrl: './drills.page.scss',
@@ -258,6 +260,29 @@ export class DrillsPage {
     return numbered(c.line.length, played);
   });
   protected readonly userMoves = computed(() => Math.ceil(this.played().length / 2));
+
+  /**
+   * The position a note written here is attached to: the position being
+   * answered; once the drill has ended, the last decision point (where a
+   * wrong move was refused, or before the last accepted move); and the
+   * position on the board while exploring. Notes are the same private
+   * position notes the explorer and the game viewer show.
+   */
+  protected readonly noteKey = computed(() => {
+    const o = this.outcome();
+    if (!o) return positionKey(this.currentFen());
+    if (this.explore().length > 0) return positionKey(this.boardFen());
+    if (!o.correct) return positionKey(this.currentFen());
+    const played = this.played();
+    return positionKey(playLine(this.fen(), played.slice(0, -1)));
+  });
+  protected readonly noteLabel = computed(() => {
+    const o = this.outcome();
+    if (o && this.explore().length > 0) return 'Your notes on the position on the board';
+    if (o?.correct && this.played().length > 0)
+      return `Your notes on the position before ${o.played}`;
+    return 'Your notes on this position';
+  });
 
   constructor() {
     void this.openings.load();
@@ -519,6 +544,7 @@ export class DrillsPage {
 
   @HostListener('window:keydown', ['$event'])
   protected onKey(event: KeyboardEvent): void {
+    if (isTyping(event.target)) return;
     if (event.key === 'Enter' && this.outcome()) {
       this.next();
       event.preventDefault();
@@ -529,6 +555,15 @@ export class DrillsPage {
     if (this.replyTimer !== null) clearTimeout(this.replyTimer);
     this.replyTimer = null;
   }
+}
+
+/** True when the key press belongs to a text field, such as the note box. */
+function isTyping(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
 }
 
 /** Alternates two lists, keeping each one's order, until both are exhausted. */
