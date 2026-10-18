@@ -140,7 +140,7 @@
           </button>
           <button
             matIconButton
-            (click)="goTo(chips().length)"
+            (click)="goTo(lastPly())"
             [disabled]="atLive()"
             aria-label="Last position"
           >
@@ -155,25 +155,45 @@
               navigable)
             </span>
           }
-          <button
-            type="button"
-            class="chip marker"
-            [class.current]="viewPly() === 0 && startPly() === 0"
-            (click)="goTo(startPly())"
-            aria-label="Drill position"
-          >
-            @if (startPly() === 0 && history().orders <= 1) {
-              Start position
-            } @else {
-              Drill position
+          @if (startPly() > 0) {
+            <button
+              type="button"
+              class="chip marker"
+              [class.current]="viewPly() === 0"
+              [attr.aria-current]="viewPly() === 0 ? 'step' : null"
+              (click)="goTo(0)"
+            >
+              Game start
+            </button>
+            @for (chip of historyChips(); track chip.ply) {
+              <button
+                type="button"
+                class="chip history"
+                [class.current]="viewPly() === chip.ply"
+                [attr.aria-current]="viewPly() === chip.ply ? 'step' : null"
+                (click)="goTo(chip.ply)"
+              >
+                {{ chip.label }}
+              </button>
             }
-          </button>
-          @for (chip of chips(); track chip.ply) {
+            <span class="marker-label" aria-hidden="true">drill</span>
+          } @else {
+            <button
+              type="button"
+              class="chip marker"
+              [class.current]="viewPly() === 0"
+              [attr.aria-current]="viewPly() === 0 ? 'step' : null"
+              (click)="goTo(0)"
+            >
+              {{ history().orders <= 1 ? 'Start position' : 'Drill position' }}
+            </button>
+          }
+          @for (chip of drillChips(); track chip.ply) {
             <button
               type="button"
               class="chip"
-              [class.history]="chip.kind === 'history'"
               [class.current]="viewPly() === chip.ply"
+              [attr.aria-current]="viewPly() === chip.ply ? 'step' : null"
               (click)="goTo(chip.ply)"
             >
               {{ chip.label }}
@@ -181,7 +201,7 @@
           }
         </p>
         @if (!atLive()) {
-          <p class="muted hint">
+          <p class="muted hint" role="status">
             Looking back. Use the arrows or press End to return to the live position.
           </p>
         }

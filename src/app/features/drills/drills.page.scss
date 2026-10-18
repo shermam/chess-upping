@@ -149,3 +149,13 @@ h2 {
 .drill-note {
   margin-top: 16px;
 }
+
+.marker-label {
+  font: var(--mat-sys-label-small);
+  color: var(--mat-sys-primary);
+  border-left: 2px solid var(--mat-sys-primary);
+  padding-left: 4px;
+  margin: 0 2px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

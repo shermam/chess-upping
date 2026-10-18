@@ -275,7 +275,8 @@ export class DrillsPage {
     const c = this.cursor();
     return c === null ? last : Math.max(0, Math.min(c, last));
   });
-  protected readonly atLive = computed(() => this.viewPly() === this.positions().length - 1);
+  protected readonly lastPly = computed(() => this.positions().length - 1);
+  protected readonly atLive = computed(() => this.viewPly() === this.lastPly());
   /** What the board shows: the position being looked at. */
   protected readonly boardFen = computed(() => this.positions()[this.viewPly()]);
   /** Index of the first explored move in the timeline: positions from there on can be branched from. */
@@ -301,25 +302,10 @@ export class DrillsPage {
   protected readonly turn = computed<Color>(() =>
     new Chess(this.boardFen()).turn() === 'w' ? 'white' : 'black',
   );
-  /**
-   * Highlights the last move on the board: the move stepped to, the move
-   * being graded, the last automatic reply, the final accepted move, or the
-   * engine's best move after a wrong answer.
-   */
+  /** Highlights the move that led to the position on the board. */
   protected readonly highlight = computed<Key[] | null>(() => {
-    if (!this.atLive()) {
-      const ply = this.viewPly();
-      return ply === 0 ? null : squaresOf(this.positions()[ply - 1], this.timeline()[ply - 1]);
-    }
-    const o = this.outcome();
-    if (o && this.explore().length > 0) return null;
-    if (o && !o.correct) return o.result.best ? squaresOf(this.currentFen(), o.result.best) : null;
-    const pending = this.pending();
-    if (!o && pending) return squaresOf(this.currentFen(), pending);
-    const played = this.played();
-    if (played.length === 0) return null;
-    const before = playLine(this.fen(), played.slice(0, -1));
-    return squaresOf(before, played[played.length - 1]);
+    const ply = this.viewPly();
+    return ply === 0 ? null : squaresOf(this.positions()[ply - 1], this.timeline()[ply - 1]);
   });
   /** The move list under the board: history (when navigable) and the drill's moves. */
   protected readonly chips = computed<MoveChip[]>(() => {
@@ -333,6 +319,10 @@ export class DrillsPage {
       return { ply: k + 1, label, kind: k < prefix.length ? 'history' : 'drill' };
     });
   });
+  protected readonly historyChips = computed(() =>
+    this.chips().filter((c) => c.kind === 'history'),
+  );
+  protected readonly drillChips = computed(() => this.chips().filter((c) => c.kind === 'drill'));
   protected readonly openingName = computed(() => {
     const c = this.card();
     if (!c || !this.openings.ready()) return null;
@@ -491,6 +481,7 @@ export class DrillsPage {
       return;
     }
     this.played.update((p) => [...p, san]);
+    this.cursor.set(null);
     const solved = this.userMoves();
     if (this.mode() === 'single' || solved >= MAX_SEQUENCE_MOVES) {
       this.finish(true, san, result);
@@ -508,6 +499,7 @@ export class DrillsPage {
       this.replyTimer = null;
       if (attempt !== this.attempt) return;
       this.played.update((p) => [...p, next.reply]);
+      this.cursor.set(null);
       this.expected.set(next.expected);
       this.stage.set('answer');
       this.startedAt = Date.now();
@@ -570,6 +562,7 @@ export class DrillsPage {
 
   private finish(correct: boolean, played: string, result: GradeResult): void {
     this.stage.set('done');
+    this.cursor.set(null);
     this.outcome.set({
       correct,
       played,
@@ -646,8 +639,7 @@ export class DrillsPage {
 
   /** Steps to a position of the timeline; the last one is the live end. */
   protected goTo(ply: number): void {
-    const last = this.positions().length - 1;
-    this.cursor.set(ply >= last ? null : Math.max(0, ply));
+    this.cursor.set(ply >= this.lastPly() ? null : Math.max(0, ply));
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -655,7 +647,8 @@ export class DrillsPage {
     if (isTyping(event.target) || !this.card()) return;
     switch (event.key) {
       case 'Enter':
-        if (!this.outcome()) return;
+        // A focused button or link keeps Enter for itself.
+        if (!this.outcome() || isControl(event.target)) return;
         this.next();
         break;
       case 'ArrowLeft':
@@ -668,7 +661,7 @@ export class DrillsPage {
         this.goTo(0);
         break;
       case 'End':
-        this.goTo(this.positions().length - 1);
+        this.goTo(this.lastPly());
         break;
       default:
         return;
@@ -685,10 +678,14 @@ export class DrillsPage {
 /** True when the key press belongs to a text field, such as the note box. */
 function isTyping(target: EventTarget | null): boolean {
   return (
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLInputElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.closest('input, textarea, select') !== null)
   );
+}
+
+/** True when the key press belongs to a focused button or link. */
+function isControl(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest('button, a') !== null;
 }
 
 /** Alternates two lists, keeping each one's order, until both are exhausted. */
