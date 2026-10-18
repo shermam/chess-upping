@@ -47,10 +47,12 @@
           <div class="white" [style.height.%]="whiteBar()"></div>
         </div>
         <app-board
-          [fen]="current()!.fen"
+          [fen]="boardFen()"
           [orientation]="userColor()"
           [turnColor]="turn()"
+          [dests]="dests()"
           [lastMove]="lastMove()"
+          (move)="onBoardMove($event)"
         />
       </div>
       <div class="controls">
@@ -59,8 +61,8 @@
         </button>
         <button
           matIconButton
-          (click)="goTo(ply() - 1)"
-          [disabled]="ply() === 0"
+          (click)="backOne()"
+          [disabled]="ply() === 0 && variation().length === 0"
           aria-label="Previous move"
         >
           <mat-icon>chevron_left</mat-icon>
@@ -82,6 +84,16 @@
           <mat-icon>last_page</mat-icon>
         </button>
       </div>
+      @if (variation().length > 0) {
+        <div class="variation">
+          <span class="muted">Variation:</span>
+          @for (label of variationText(); track $index) {
+            <span class="san">{{ label }}</span>
+          }
+          <button matButton (click)="leaveVariation()">Back to game</button>
+        </div>
+      }
+      <app-engine-panel [fen]="boardFen()" (play)="playSan($event)" />
       <app-eval-graph [points]="graphPoints()" [current]="ply()" (plySelect)="goTo($event)" />
       <div class="engine">
         <div class="score">

@@ -60,6 +60,7 @@
           [lastMove]="highlight()"
           (move)="onBoardMove($event)"
         />
+        <app-engine-panel [fen]="boardFen()" (play)="playSan($event)" />
       </div>
       <div class="side">
         <h2>Your move as {{ c.color }}</h2>
@@ -86,6 +87,9 @@
               <span>You played {{ o.played }}; your usual move is {{ c.expected }}.</span>
             }
           </div>
+          @if (explore().length > 0) {
+            <p class="muted">Exploring {{ explore().join(' ') }} — press Next when done.</p>
+          }
           <div class="actions">
             <button matButton="filled" (click)="next()">
               <mat-icon>arrow_forward</mat-icon> Next (Enter)

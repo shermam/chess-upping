@@ -16,7 +16,8 @@ Still to do:
 - Respect battery and CPU: pause the bulk job on battery, use idle callbacks.
 - Multi-threaded engine (needs COOP/COEP headers, which conflicts with the
   Google sign-in popup; would require the redirect sign-in flow).
-- Multiple principal variations in the viewer.
+- Feed finished live-analysis results into the shared position table.
+- Variation trees in the viewer (branching, saving variations with notes).
 - Background sync of positions from the cloud for devices that did not
   evaluate them (today lookups are per game, on demand).
 

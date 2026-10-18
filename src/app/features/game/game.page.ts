@@ -15,7 +15,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
-import { Chess } from 'chess.js';
+import { Chess, Square } from 'chess.js';
 import type { Key } from 'chessground/types';
 import { UserProfileService } from '../../core/auth/user-profile.service';
 import { EvalStoreService } from '../../core/data/eval-store.service';
@@ -24,8 +24,9 @@ import { EnginePoolService } from '../../core/engine/engine-pool.service';
 import { OpeningsService } from '../../core/openings/openings.service';
 import { Color, Game, PERF_LABELS } from '../../models/game';
 import { PositionEval, formatEval, positionKey, whiteWinChance } from '../../models/position-eval';
-import { BoardComponent } from '../opening-tree/board.component';
+import { BoardComponent, BoardMove } from '../opening-tree/board.component';
 import { EvalGraphComponent, EvalPoint } from './eval-graph.component';
+import { EnginePanelComponent } from '../../shared/engine-panel.component';
 import { NoteBoxComponent } from '../../shared/note-box.component';
 import { JUDGEMENT_SYMBOL, JudgedMove, accuracy, judgeMoves } from '../../models/analysis';
 
@@ -91,6 +92,7 @@ function uciToSan(fen: string, uci: string[]): string[] {
     BoardComponent,
     EvalGraphComponent,
     NoteBoxComponent,
+    EnginePanelComponent,
   ],
   templateUrl: './game.page.html',
   styleUrl: './game.page.scss',
@@ -148,6 +150,54 @@ export class GamePage {
   });
   protected readonly ply = signal(0);
   protected readonly current = computed(() => this.plies()[this.ply()] ?? null);
+  /** Moves played on the board from the current ply, exploring away from the game. */
+  protected readonly variation = signal<string[]>([]);
+  /** The position on the board: the game at `ply`, plus any variation. */
+  protected readonly boardState = computed(() => {
+    const c = this.current();
+    const base = c?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const chess = new Chess(base);
+    let last: { from: Key; to: Key } | null = c?.from && c.to ? { from: c.from, to: c.to } : null;
+    const played: string[] = [];
+    for (const san of this.variation()) {
+      try {
+        const m = chess.move(san);
+        last = { from: m.from as Key, to: m.to as Key };
+        played.push(m.san);
+      } catch {
+        break;
+      }
+    }
+    return {
+      fen: chess.fen(),
+      last,
+      played,
+      turn: chess.turn() === 'w' ? 'white' : 'black',
+    } as const;
+  });
+  protected readonly boardFen = computed(() => this.boardState().fen);
+  protected readonly dests = computed(() => {
+    const map = new Map<Key, Key[]>();
+    for (const m of new Chess(this.boardFen()).moves({ verbose: true })) {
+      const list = map.get(m.from as Key) ?? [];
+      list.push(m.to as Key);
+      map.set(m.from as Key, list);
+    }
+    return map;
+  });
+  /** Variation moves with numbers, for display. */
+  protected readonly variationText = computed(() => {
+    const c = this.current();
+    const base = c ? new Chess(c.fen) : new Chess();
+    let no = base.moveNumber();
+    let white = base.turn() === 'w';
+    return this.boardState().played.map((san, i) => {
+      const label = white ? `${no}. ${san}` : i === 0 ? `${no}… ${san}` : san;
+      if (!white) no++;
+      white = !white;
+      return label;
+    });
+  });
   protected readonly evalMap = signal<Map<string, PositionEval>>(new Map());
   protected readonly evaluating = signal(false);
   protected readonly evaluated = computed(
@@ -278,7 +328,38 @@ export class GamePage {
 
   protected goTo(ply: number): void {
     const max = this.plies().length - 1;
+    this.variation.set([]);
     this.ply.set(Math.max(0, Math.min(max, ply)));
+  }
+
+  /** A move made on the board explores a variation from the current position. */
+  protected onBoardMove({ from, to }: BoardMove): void {
+    try {
+      const chess = new Chess(this.boardFen());
+      const m = chess.move({ from: from as Square, to: to as Square, promotion: 'q' });
+      this.variation.update((v) => [...v, m.san]);
+    } catch {
+      // Illegal: chessground only offers legal destinations.
+    }
+  }
+
+  /** Plays a SAN move from the engine panel on the current board position. */
+  protected playSan(san: string): void {
+    try {
+      new Chess(this.boardFen()).move(san);
+      this.variation.update((v) => [...v, san]);
+    } catch {
+      // Not legal here.
+    }
+  }
+
+  protected backOne(): void {
+    if (this.variation().length > 0) this.variation.update((v) => v.slice(0, -1));
+    else this.goTo(this.ply() - 1);
+  }
+
+  protected leaveVariation(): void {
+    this.variation.set([]);
   }
 
   protected perfLabel(perf: string): string {
@@ -295,7 +376,7 @@ export class GamePage {
     if (target?.closest('input, textarea, select')) return;
     switch (event.key) {
       case 'ArrowLeft':
-        this.goTo(this.ply() - 1);
+        this.backOne();
         break;
       case 'ArrowRight':
         this.goTo(this.ply() + 1);
