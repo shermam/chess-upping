@@ -2,12 +2,33 @@
   <header class="head">
     <h1>Drills</h1>
     <span class="muted">
-      Positions from your own games where you have a habitual move. Play it as fast as you can; the
-      slowest ones come first, and spaced repetition brings each one back when it is due.
+      Positions from your own games: your habitual moves, played as fast as you can, and the
+      positions where you went wrong, where your usual move is refused. Any move the engine rates
+      about as good as the reference is accepted; spaced repetition brings each position back when
+      it is due.
     </span>
   </header>
 
   <section class="filters">
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="source()"
+      (change)="source.set($event.value)"
+      aria-label="Source"
+    >
+      <mat-button-toggle value="both">Mixed</mat-button-toggle>
+      <mat-button-toggle value="repertoire">Repertoire</mat-button-toggle>
+      <mat-button-toggle value="mistake">Mistakes</mat-button-toggle>
+    </mat-button-toggle-group>
+    <mat-button-toggle-group
+      hideSingleSelectionIndicator
+      [value]="mode()"
+      (change)="mode.set($event.value)"
+      aria-label="Mode"
+    >
+      <mat-button-toggle value="single">Single move</mat-button-toggle>
+      <mat-button-toggle value="sequence">Sequence</mat-button-toggle>
+    </mat-button-toggle-group>
     <mat-button-toggle-group
       hideSingleSelectionIndicator
       [value]="colorChoice()"
@@ -18,22 +39,29 @@
       <mat-button-toggle value="white">As white</mat-button-toggle>
       <mat-button-toggle value="black">As black</mat-button-toggle>
     </mat-button-toggle-group>
-    <mat-button-toggle-group
-      hideSingleSelectionIndicator
-      [value]="minGames()"
-      (change)="minGames.set($event.value)"
-      aria-label="Minimum games"
-    >
-      <mat-button-toggle [value]="3">3+ games</mat-button-toggle>
-      <mat-button-toggle [value]="5">5+ games</mat-button-toggle>
-      <mat-button-toggle [value]="10">10+ games</mat-button-toggle>
-    </mat-button-toggle-group>
+    @if (source() !== 'mistake') {
+      <mat-button-toggle-group
+        hideSingleSelectionIndicator
+        [value]="minGames()"
+        (change)="minGames.set($event.value)"
+        aria-label="Minimum games"
+      >
+        <mat-button-toggle [value]="3">3+ games</mat-button-toggle>
+        <mat-button-toggle [value]="5">5+ games</mat-button-toggle>
+        <mat-button-toggle [value]="10">10+ games</mat-button-toggle>
+      </mat-button-toggle-group>
+    }
     <span class="spacer"></span>
     <span class="muted">
       {{ queue().due.length | number }} due · {{ queue().fresh.length | number }} new ·
       {{ queue().later | number }} scheduled · {{ drills.reviewedToday() | number }} done today
     </span>
   </section>
+
+  @if (analysing()) {
+    <mat-progress-bar mode="determinate" [value]="finder.progress()" />
+    <p class="muted">Looking for mistakes in your games…</p>
+  }
 
   @if (!indexReady()) {
     <mat-progress-bar mode="determinate" [value]="indexProgress()" />
@@ -42,7 +70,14 @@
     <mat-progress-bar mode="indeterminate" />
     <p class="muted">Loading your drill history…</p>
   } @else if (totalCards() === 0) {
-    <p class="muted">No positions qualify yet. Lower the minimum games, or sync more games.</p>
+    @if (source() === 'mistake') {
+      <p class="muted">
+        No mistakes found yet. <a routerLink="/engine">Run the engine</a> on your games, then come
+        back.
+      </p>
+    } @else {
+      <p class="muted">No positions qualify yet. Lower the minimum games, or sync more games.</p>
+    }
   } @else if (!card()) {
     <mat-card appearance="outlined">
       <mat-card-content>
@@ -63,28 +98,62 @@
         <app-engine-panel [fen]="boardFen()" (play)="playSan($event)" />
       </div>
       <div class="side">
+        <div class="kind" [class.mistake]="c.kind === 'mistake'">
+          <mat-icon>{{ c.kind === 'mistake' ? 'error' : 'repeat' }}</mat-icon>
+          <span>{{ c.kind === 'mistake' ? 'From your mistakes' : 'From your repertoire' }}</span>
+          @if (mode() === 'sequence') {
+            <span class="muted"
+              >· sequence, move {{ userMoves() + (stage() === 'answer' ? 1 : 0) }}</span
+            >
+          }
+        </div>
         <h2>Your move as {{ c.color }}</h2>
         @if (openingName(); as name) {
           <div class="opening">{{ name }}</div>
         }
-        <p class="muted line">{{ lineText() || 'Start position' }}</p>
-        <p class="muted">
-          You reached this position {{ c.games }} times and played the same move in
-          {{ c.share * 100 | number: '1.0-0' }}% of them
-          @if (c.avgTimeSec !== null) {
-            , taking {{ formatSeconds(c.avgTimeSec) }} on average
+        <p class="muted line">
+          {{ lineText() || 'Start position' }}
+          @if (playedText(); as p) {
+            <strong> {{ p }}</strong>
           }
-          .
         </p>
+        @if (c.kind === 'mistake') {
+          <p class="muted">
+            You played {{ c.played }} here
+            @if (c.games > 1) {
+              in {{ c.games }} games
+            } @else if (c.opponent) {
+              against {{ c.opponent }}
+            }
+            , a {{ c.judgement }} ({{ c.judgement ? symbol[c.judgement] : '' }}). Find a better
+            move.
+          </p>
+        } @else {
+          <p class="muted">
+            You reached this position {{ c.games }} times and played the same move in
+            {{ c.share * 100 | number: '1.0-0' }}% of them
+            @if (c.avgTimeSec !== null) {
+              , taking {{ formatSeconds(c.avgTimeSec) }} on average
+            }
+            .
+          </p>
+        }
 
         @if (outcome(); as o) {
           <div class="result" [class.correct]="o.correct" [class.wrong]="!o.correct">
             @if (o.correct) {
               <mat-icon>check_circle</mat-icon>
-              <span>{{ c.expected }} in {{ formatSeconds(o.seconds) }}</span>
+              <span>
+                @if (o.solved > 1) {
+                  {{ o.solved }} moves in {{ formatSeconds(o.seconds) }}.
+                } @else {
+                  Solved in {{ formatSeconds(o.seconds) }}.
+                }
+                {{ verdict(o, c) }}
+              </span>
             } @else {
               <mat-icon>cancel</mat-icon>
-              <span>You played {{ o.played }}; your usual move is {{ c.expected }}.</span>
+              <span>{{ verdict(o, c) }}</span>
             }
           </div>
           @if (explore().length > 0) {
@@ -95,9 +164,24 @@
               <mat-icon>arrow_forward</mat-icon> Next (Enter)
             </button>
             <a matButton routerLink="/" [queryParams]="explorerParams(c)">Explore this line</a>
+            @if (c.gameId) {
+              <a matButton [routerLink]="['/games', c.gameId]" [queryParams]="{ ply: c.ply }">
+                Open the game
+              </a>
+            }
           </div>
+        } @else if (stage() === 'checking') {
+          <p class="checking"><mat-icon>hourglass_top</mat-icon> Checking with the engine…</p>
         } @else {
-          <p>Play your usual move on the board.</p>
+          <p>
+            @if (c.kind === 'mistake') {
+              Find the best move on the board.
+            } @else if (userMoves() > 0) {
+              Keep going: play your next move.
+            } @else {
+              Play your usual move on the board.
+            }
+          </p>
           <div class="actions">
             <button matButton (click)="skip()">Skip</button>
           </div>

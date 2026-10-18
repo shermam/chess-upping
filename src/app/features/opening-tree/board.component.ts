@@ -25,7 +25,7 @@ export interface BoardMove {
 /** Thin Angular wrapper around Lichess's chessground board. */
 @Component({
   selector: 'app-board',
-  template: '<div class="board" #board></div>',
+  template: '<div class="board" #board (pointerdown)="refreshBounds()"></div>',
   styles: `
     :host {
       display: block;
@@ -70,6 +70,15 @@ export class BoardComponent {
     draggable: { showGhost: true },
     highlight: { lastMove: true, check: true },
   }));
+
+  /**
+   * Chessground caches the board's screen rectangle; when content above the
+   * board changes height after it was created, clicks would map to the wrong
+   * squares. Recomputing before each interaction keeps them accurate.
+   */
+  protected refreshBounds(): void {
+    this.api?.state.dom.bounds.clear();
+  }
 
   constructor() {
     afterNextRender(() => {

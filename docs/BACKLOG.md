@@ -60,12 +60,14 @@ bar per move, average thinking time per move.
 
 Done: private notes on positions and games, mistake finder grouped by opening
 and by repeated position, move judgements and accuracy in the viewer, eval
-graph, spaced-repetition drills built from the user's own habitual moves.
+graph, spaced-repetition drills built from the user's own habitual moves and
+from the mistake finder, answers graded by the engine (any move within an
+inaccuracy of the reference is accepted), sequence drills with automatic
+opponent replies.
 
-- Drill answers graded against the engine too: a different move that the
-  engine rates as good should not count as a lapse.
-- Drill sets built from mistakes (replay the position where a blunder
-  happened and find the better move).
+- Longer tactical sequences from the engine's line once positions are
+  evaluated deeper, and a per-card choice of sequence length.
+- Drill statistics: accuracy and median time per card over time.
 - Per-game accuracy trend over time.
 - Export notes and drill history.
 
