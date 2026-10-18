@@ -50,6 +50,51 @@ h2 {
 
 .line {
   font: var(--mat-sys-body-medium);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 2px;
+  margin: 4px 0 8px;
+}
+
+.hint {
+  font: var(--mat-sys-body-small);
+}
+
+.controls {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 0 -8px;
+}
+
+.chip {
+  font: inherit;
+  font-weight: 500;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 1px 5px;
+  cursor: pointer;
+  &.history {
+    font-weight: 400;
+    color: var(--mat-sys-on-surface-variant);
+  }
+  &.marker {
+    font: var(--mat-sys-label-medium);
+    color: var(--mat-sys-primary);
+    border: 1px solid var(--mat-sys-outline-variant);
+  }
+  &.current {
+    background: var(--mat-sys-secondary-container);
+    color: var(--mat-sys-on-secondary-container);
+  }
+  &:hover {
+    background: var(--mat-sys-surface-container-high);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--mat-sys-primary);
+  }
 }
 
 .result {

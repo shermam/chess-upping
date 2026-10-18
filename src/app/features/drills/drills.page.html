@@ -113,12 +113,78 @@
         @if (openingName(); as name) {
           <div class="opening">{{ name }}</div>
         }
-        <p class="muted line">
-          {{ lineText() || 'Start position' }}
-          @if (playedText(); as p) {
-            <strong> {{ p }}</strong>
+        <div class="controls">
+          <button
+            matIconButton
+            (click)="goTo(0)"
+            [disabled]="viewPly() === 0"
+            aria-label="First position"
+          >
+            <mat-icon>first_page</mat-icon>
+          </button>
+          <button
+            matIconButton
+            (click)="goTo(viewPly() - 1)"
+            [disabled]="viewPly() === 0"
+            aria-label="Previous move"
+          >
+            <mat-icon>chevron_left</mat-icon>
+          </button>
+          <button
+            matIconButton
+            (click)="goTo(viewPly() + 1)"
+            [disabled]="atLive()"
+            aria-label="Next move"
+          >
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+          <button
+            matIconButton
+            (click)="goTo(chips().length)"
+            [disabled]="atLive()"
+            aria-label="Last position"
+          >
+            <mat-icon>last_page</mat-icon>
+          </button>
+        </div>
+        <p class="line">
+          @if (history().orders > 1) {
+            <span class="muted">{{ lineText() }}</span>
+            <span class="muted hint">
+              (reached by {{ history().orders }} move orders in your games, so the history is not
+              navigable)
+            </span>
+          }
+          <button
+            type="button"
+            class="chip marker"
+            [class.current]="viewPly() === 0 && startPly() === 0"
+            (click)="goTo(startPly())"
+            aria-label="Drill position"
+          >
+            @if (startPly() === 0 && history().orders <= 1) {
+              Start position
+            } @else {
+              Drill position
+            }
+          </button>
+          @for (chip of chips(); track chip.ply) {
+            <button
+              type="button"
+              class="chip"
+              [class.history]="chip.kind === 'history'"
+              [class.current]="viewPly() === chip.ply"
+              (click)="goTo(chip.ply)"
+            >
+              {{ chip.label }}
+            </button>
           }
         </p>
+        @if (!atLive()) {
+          <p class="muted hint">
+            Looking back. Use the arrows or press End to return to the live position.
+          </p>
+        }
         @if (c.kind === 'mistake') {
           <p class="muted">{{ mistakePrompt(c) }}</p>
         } @else {

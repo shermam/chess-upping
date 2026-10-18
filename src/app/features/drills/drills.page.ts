@@ -64,6 +64,16 @@ interface Outcome {
   result: GradeResult;
 }
 
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+/** One move in the navigable move list. */
+interface MoveChip {
+  /** Position reached after this move, as an index into the timeline. */
+  ply: number;
+  label: string;
+  kind: 'history' | 'drill';
+}
+
 /** Most user moves in a sequence drill before it is declared solved. */
 const MAX_SEQUENCE_MOVES = 3;
 /** Pause before the opponent's reply appears, so the user's move registers visually. */
@@ -190,30 +200,97 @@ export class DrillsPage {
   /** The card's starting position. */
   protected readonly fen = computed(() => {
     const c = this.card();
-    return c
-      ? `${c.key.replace(/_/g, '/')} 0 1`
-      : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    return c ? `${c.key.replace(/_/g, '/')} 0 1` : START_FEN;
   });
   /** The position the user is answering from (after the moves played so far). */
   protected readonly currentFen = computed(() => playLine(this.fen(), this.played()));
   /**
-   * What the board shows: the drill position while answering, with the move
-   * being graded on it; after a wrong move the engine's best move instead,
-   * so the lesson is on the board; plus anything explored afterwards.
+   * How the drill position was reached in the user's games: the one move
+   * order when every game used the same, else the card's own line and the
+   * number of different orders. A single order can be walked back through;
+   * several cannot, so navigation then stops at the drill position.
    */
-  protected readonly boardFen = computed(() => {
+  protected readonly history = computed<{ moves: string[]; orders: number }>(() => {
+    const c = this.card();
+    if (!c) return { moves: [], orders: 0 };
+    this.index.version();
+    const orders = new Map<string, number>();
+    for (const g of this.store.games()) {
+      const keys = this.index.keysFor(g.id);
+      const at = keys ? keys.indexOf(c.key) : -1;
+      if (at < 0) continue;
+      const prefix = g.moves.split(' ').slice(0, at).join(' ');
+      orders.set(prefix, (orders.get(prefix) ?? 0) + 1);
+    }
+    if (orders.size === 1) {
+      const [only] = orders.keys();
+      return { moves: only ? only.split(' ') : [], orders: 1 };
+    }
+    // Not indexed (deep in a game): the card's own game is the only order known.
+    return { moves: c.line, orders: orders.size === 0 ? 1 : orders.size };
+  });
+  /** Moves before the drill position that can be navigated: the unambiguous history. */
+  private readonly prefix = computed(() => {
+    const h = this.history();
+    return h.orders === 1 ? h.moves : [];
+  });
+  /**
+   * The moves from the drill position currently on the board at the live
+   * end: the moves played, the move being graded, the engine's best move
+   * after a wrong answer, and anything explored afterwards.
+   */
+  private readonly shownMoves = computed<string[]>(() => {
     const o = this.outcome();
-    const base = this.currentFen();
+    const played = this.played();
     if (!o) {
       const pending = this.pending();
-      return pending ? playLine(base, [pending]) : base;
+      return pending ? [...played, pending] : played;
     }
-    const shown = o.correct ? [] : o.result.best ? [o.result.best] : [];
-    return playLine(base, [...shown, ...this.explore()]);
+    const best = !o.correct && o.result.best ? [o.result.best] : [];
+    return [...played, ...best, ...this.explore()];
+  });
+  /** Every move that can be stepped through, history first. */
+  private readonly timeline = computed(() => [...this.prefix(), ...this.shownMoves()]);
+  /** Index of the drill position in the timeline. */
+  protected readonly startPly = computed(() => this.prefix().length);
+  /** The positions along the timeline, one more than there are moves. */
+  private readonly positions = computed<string[]>(() => {
+    const root = this.prefix().length > 0 ? START_FEN : this.fen();
+    const chess = new Chess(root);
+    const fens = [chess.fen()];
+    for (const san of this.timeline()) {
+      try {
+        chess.move(san);
+      } catch {
+        break;
+      }
+      fens.push(chess.fen());
+    }
+    return fens;
+  });
+  /** Where the user is looking: null is the live end, where moves are made. */
+  private readonly cursor = signal<number | null>(null);
+  protected readonly viewPly = computed(() => {
+    const last = this.positions().length - 1;
+    const c = this.cursor();
+    return c === null ? last : Math.max(0, Math.min(c, last));
+  });
+  protected readonly atLive = computed(() => this.viewPly() === this.positions().length - 1);
+  /** What the board shows: the position being looked at. */
+  protected readonly boardFen = computed(() => this.positions()[this.viewPly()]);
+  /** Index of the first explored move in the timeline: positions from there on can be branched from. */
+  private readonly exploreFrom = computed(
+    () => this.startPly() + this.shownMoves().length - this.explore().length,
+  );
+  /** Moves can be made at the live end, and after the drill from any explored position. */
+  private readonly movable = computed(() => {
+    if (this.stage() === 'checking' || this.stage() === 'replying') return false;
+    if (this.atLive()) return true;
+    return this.outcome() !== null && this.viewPly() >= this.exploreFrom();
   });
   protected readonly dests = computed(() => {
     const map = new Map<Key, Key[]>();
-    if (this.stage() === 'checking' || this.stage() === 'replying') return map;
+    if (!this.movable()) return map;
     for (const m of new Chess(this.boardFen()).moves({ verbose: true })) {
       const list = map.get(m.from as Key) ?? [];
       list.push(m.to as Key);
@@ -225,11 +302,15 @@ export class DrillsPage {
     new Chess(this.boardFen()).turn() === 'w' ? 'white' : 'black',
   );
   /**
-   * Highlights the last move on the board: the move being graded, the last
-   * automatic reply, the final accepted move, or the engine's best move
-   * after a wrong answer.
+   * Highlights the last move on the board: the move stepped to, the move
+   * being graded, the last automatic reply, the final accepted move, or the
+   * engine's best move after a wrong answer.
    */
   protected readonly highlight = computed<Key[] | null>(() => {
+    if (!this.atLive()) {
+      const ply = this.viewPly();
+      return ply === 0 ? null : squaresOf(this.positions()[ply - 1], this.timeline()[ply - 1]);
+    }
     const o = this.outcome();
     if (o && this.explore().length > 0) return null;
     if (o && !o.correct) return o.result.best ? squaresOf(this.currentFen(), o.result.best) : null;
@@ -239,6 +320,18 @@ export class DrillsPage {
     if (played.length === 0) return null;
     const before = playLine(this.fen(), played.slice(0, -1));
     return squaresOf(before, played[played.length - 1]);
+  });
+  /** The move list under the board: history (when navigable) and the drill's moves. */
+  protected readonly chips = computed<MoveChip[]>(() => {
+    const prefix = this.prefix();
+    const base = prefix.length > 0 ? 0 : this.history().moves.length;
+    return this.timeline().map((san, k) => {
+      const ply = base + k;
+      const n = Math.floor(ply / 2) + 1;
+      const label =
+        ply % 2 === 0 ? `${n}. ${san}` : k === 0 || k === prefix.length ? `${n}… ${san}` : san;
+      return { ply: k + 1, label, kind: k < prefix.length ? 'history' : 'drill' };
+    });
   });
   protected readonly openingName = computed(() => {
     const c = this.card();
@@ -252,13 +345,6 @@ export class DrillsPage {
     if (!c) return '';
     return c.line.map((san, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${san}` : san)).join(' ');
   });
-  /** The moves of the drill so far, numbered from the card's ply. */
-  protected readonly playedText = computed(() => {
-    const c = this.card();
-    const played = this.played();
-    if (!c || played.length === 0) return '';
-    return numbered(c.line.length, played);
-  });
   protected readonly userMoves = computed(() => Math.ceil(this.played().length / 2));
 
   /**
@@ -269,6 +355,7 @@ export class DrillsPage {
    * position notes the explorer and the game viewer show.
    */
   protected readonly noteKey = computed(() => {
+    if (!this.atLive()) return positionKey(this.boardFen());
     const o = this.outcome();
     const played = this.played();
     // While the opponent's reply is on its way, stay on the position just decided.
@@ -280,6 +367,7 @@ export class DrillsPage {
     return positionKey(playLine(this.fen(), played.slice(0, -1)));
   });
   protected readonly noteLabel = computed(() => {
+    if (!this.atLive()) return 'Your notes on the position on the board';
     const o = this.outcome();
     const played = this.played();
     if (o && this.explore().length > 0) return 'Your notes on the position on the board';
@@ -347,6 +435,7 @@ export class DrillsPage {
     this.expected.set(card?.expected ?? null);
     this.outcome.set(null);
     this.explore.set([]);
+    this.cursor.set(null);
     this.thinkMs = 0;
     this.startedAt = Date.now();
   }
@@ -365,11 +454,18 @@ export class DrillsPage {
     const card = this.card();
     if (!card || this.stage() === 'checking' || this.stage() === 'replying') return;
     if (this.outcome()) {
-      // Free exploration after the drill ended.
+      // Free exploration after the drill ended. From an earlier explored
+      // position the move replaces what followed; the drill's own moves and
+      // the history stay as they were.
       const san = sanOf(this.boardFen(), from, to);
-      if (san) this.explore.update((e) => [...e, san]);
+      if (!san) return;
+      const at = this.viewPly() - this.exploreFrom();
+      if (at < 0) return;
+      this.explore.update((e) => [...e.slice(0, at), san]);
+      this.cursor.set(null);
       return;
     }
+    if (!this.atLive()) return;
     const fen = this.currentFen();
     const san = sanOf(fen, from, to);
     if (!san) return;
@@ -548,13 +644,36 @@ export class DrillsPage {
     }
   }
 
+  /** Steps to a position of the timeline; the last one is the live end. */
+  protected goTo(ply: number): void {
+    const last = this.positions().length - 1;
+    this.cursor.set(ply >= last ? null : Math.max(0, ply));
+  }
+
   @HostListener('window:keydown', ['$event'])
   protected onKey(event: KeyboardEvent): void {
-    if (isTyping(event.target)) return;
-    if (event.key === 'Enter' && this.outcome()) {
-      this.next();
-      event.preventDefault();
+    if (isTyping(event.target) || !this.card()) return;
+    switch (event.key) {
+      case 'Enter':
+        if (!this.outcome()) return;
+        this.next();
+        break;
+      case 'ArrowLeft':
+        this.goTo(this.viewPly() - 1);
+        break;
+      case 'ArrowRight':
+        this.goTo(this.viewPly() + 1);
+        break;
+      case 'Home':
+        this.goTo(0);
+        break;
+      case 'End':
+        this.goTo(this.positions().length - 1);
+        break;
+      default:
+        return;
     }
+    event.preventDefault();
   }
 
   private clearReplyTimer(): void {
@@ -622,16 +741,4 @@ function uciToSan(fen: string, uci: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** Numbers a run of moves that starts at ply `startPly` (0 = White's first move). */
-function numbered(startPly: number, sans: readonly string[]): string {
-  return sans
-    .map((san, i) => {
-      const ply = startPly + i;
-      const n = Math.floor(ply / 2) + 1;
-      if (ply % 2 === 0) return `${n}. ${san}`;
-      return i === 0 ? `${n}… ${san}` : san;
-    })
-    .join(' ');
 }
