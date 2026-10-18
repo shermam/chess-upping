@@ -228,12 +228,10 @@ export class GamePage {
     if (!e || !c || !e.bestMove) return [];
     return uciToSan(c.fen, e.pv ? e.pv.split(' ') : [e.bestMove]);
   });
-  protected readonly turn = computed<Color>(() =>
-    this.current()?.fen.split(' ')[1] === 'b' ? 'black' : 'white',
-  );
+  protected readonly turn = computed<Color>(() => this.boardState().turn);
   protected readonly lastMove = computed<Key[] | null>(() => {
-    const c = this.current();
-    return c?.from && c.to ? [c.from, c.to] : null;
+    const last = this.boardState().last;
+    return last ? [last.from, last.to] : null;
   });
   /** Rows for the move list: move number, white ply, black ply. */
   protected readonly rows = computed(() => {
@@ -266,7 +264,10 @@ export class GamePage {
     const param = this.plyParam();
     if (typeof param !== 'string' || plyCount === 0) return;
     const wanted = Number(param);
-    if (Number.isInteger(wanted) && wanted > 0) this.ply.set(Math.min(wanted, plyCount - 1));
+    if (Number.isInteger(wanted) && wanted > 0) {
+      this.variation.set([]);
+      this.ply.set(Math.min(wanted, plyCount - 1));
+    }
   }
 
   private async load(id: string): Promise<void> {
@@ -275,6 +276,7 @@ export class GamePage {
     this.loadAbort?.abort();
     const abort = (this.loadAbort = new AbortController());
     this.ply.set(0);
+    this.variation.set([]);
     this.evalMap.set(new Map());
     const game = await this.db.getGame(id);
     if (request !== this.loadRequest) return;

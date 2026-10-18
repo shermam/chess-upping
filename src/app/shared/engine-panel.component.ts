@@ -87,7 +87,9 @@ interface ShownLine {
             </span>
           </li>
         } @empty {
-          @if (!engine.error()) {
+          @if (engine.terminal() && engine.searchFen() === fen()) {
+            <li class="muted small">No legal moves: the game is over.</li>
+          } @else if (!engine.error()) {
             <li class="muted small">Thinking…</li>
           }
         }
@@ -181,8 +183,7 @@ export class EnginePanelComponent {
 
   protected readonly shown = computed<ShownLine[]>(() => {
     const fen = this.fen();
-    const analysed = this.engine.fen();
-    if (analysed !== fen) return [];
+    if (this.engine.searchFen() !== fen) return [];
     return this.engine.lines().map((line) => toShown(fen, line));
   });
 

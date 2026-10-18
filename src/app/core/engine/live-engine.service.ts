@@ -51,14 +51,20 @@ export class LiveEngineService {
   private waitingFor: string | null = null;
   private current: Search | null = null;
   private pending: string | null = null;
+  /** True after `stop` was sent for `current`, until its bestmove arrives. */
+  private stopping = false;
   private nextId = 1;
   private appliedMultiPv = 0;
 
   readonly enabled = signal(loadSettings().enabled);
   readonly multiPv = signal(loadSettings().multiPv);
-  /** The position being analysed (full FEN), or null when idle. */
+  /** The position requested for analysis (full FEN), or null when no board is shown. */
   readonly fen = signal<string | null>(null);
+  /** The position the current lines belong to; lags `fen` until the new search starts. */
+  readonly searchFen = signal<string | null>(null);
   readonly lines = signal<LiveLine[]>([]);
+  /** True when the analysed position has no legal moves (mate or stalemate). */
+  readonly terminal = signal(false);
   readonly depth = signal(0);
   readonly searching = signal(false);
   readonly error = signal<string | null>(null);
@@ -91,6 +97,13 @@ export class LiveEngineService {
 
   /** Analyse `fen` (when enabled); pass null when no board is on screen. */
   setPosition(fen: string | null): void {
+    if (fen !== this.fen()) {
+      // Old lines must never be read as this position's.
+      this.lines.set([]);
+      this.depth.set(0);
+      this.terminal.set(false);
+      this.searchFen.set(null);
+    }
     this.fen.set(fen);
     if (!fen) {
       this.stop();
@@ -113,8 +126,14 @@ export class LiveEngineService {
       this.worker.onmessage = (ev: MessageEvent<unknown>) => this.onLine(String(ev.data).trim());
       this.worker.onerror = (ev) => {
         this.error.set(`Engine worker error: ${ev.message || 'unknown'}`);
+        // Forget the dead worker entirely; the next request boots a fresh one
+        // with default options.
         this.worker = null;
         this.ready = null;
+        this.current = null;
+        this.pending = null;
+        this.stopping = false;
+        this.appliedMultiPv = 0;
         this.searching.set(false);
       };
       this.waitingFor = 'uciok';
@@ -128,13 +147,22 @@ export class LiveEngineService {
   }
 
   private start(fen: string): void {
-    if (this.current && this.current.fen === fen && this.appliedMultiPv === this.multiPv()) return;
+    const sameSearch =
+      this.current !== null &&
+      this.current.fen === fen &&
+      this.appliedMultiPv === this.multiPv() &&
+      !this.stopping;
+    if (sameSearch) return;
     void this.ensureWorker().then(() => {
-      if (!this.worker) return;
+      // The world may have moved on while the worker booted.
+      if (!this.worker || !this.enabled() || this.fen() !== fen) return;
       if (this.current) {
         // Let the running search finish on `stop`; its bestmove starts the next one.
         this.pending = fen;
-        this.send('stop');
+        if (!this.stopping) {
+          this.stopping = true;
+          this.send('stop');
+        }
         return;
       }
       this.launch(fen);
@@ -148,8 +176,11 @@ export class LiveEngineService {
       this.appliedMultiPv = multiPv;
     }
     this.current = { id: this.nextId++, fen, lines: new Map() };
+    this.stopping = false;
     this.lines.set([]);
     this.depth.set(0);
+    this.terminal.set(false);
+    this.searchFen.set(fen);
     this.searching.set(true);
     this.send(`position fen ${positionFen(fen)} 0 1`);
     this.send(`go depth ${MAX_DEPTH}`);
@@ -157,7 +188,10 @@ export class LiveEngineService {
 
   stop(): void {
     this.pending = null;
-    if (this.current) this.send('stop');
+    if (this.current && !this.stopping) {
+      this.stopping = true;
+      this.send('stop');
+    }
   }
 
   private onLine(line: string): void {
@@ -169,6 +203,7 @@ export class LiveEngineService {
         return;
       }
       this.waitingFor = null;
+      this.error.set(null);
       this.readyResolve?.();
       return;
     }
@@ -179,12 +214,17 @@ export class LiveEngineService {
       this.record(search, info);
       return;
     }
-    if (parseBestMove(line)) {
+    const best = parseBestMove(line);
+    if (best) {
+      // No move at all: the position is mate or stalemate.
+      if (best.bestMove === null && search.lines.size === 0 && !this.stopping)
+        this.terminal.set(true);
       this.current = null;
+      this.stopping = false;
       this.searching.set(false);
       const next = this.pending;
       this.pending = null;
-      if (next && this.enabled()) this.launch(next);
+      if (next && this.enabled() && this.fen() === next) this.launch(next);
     }
   }
 
