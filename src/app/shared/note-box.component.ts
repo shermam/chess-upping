@@ -71,8 +71,10 @@ export class NoteBoxComponent {
       const text = this.stored();
       untracked(() => {
         if (target !== this.shownTarget) {
-          // New position or game: show its note, dropping nothing of value
-          // (edits for the previous target were flushed by the cleanup below).
+          // New position or game: save what was typed for the previous one
+          // first (the target can move without a click, e.g. when a drill
+          // plays the opponent's reply), then show the new note.
+          this.flush();
           this.shownTarget = target;
           this.draft.set(text);
           this.status.set(null);

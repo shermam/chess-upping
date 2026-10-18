@@ -270,17 +270,23 @@ export class DrillsPage {
    */
   protected readonly noteKey = computed(() => {
     const o = this.outcome();
+    const played = this.played();
+    // While the opponent's reply is on its way, stay on the position just decided.
+    if (!o && this.stage() === 'replying')
+      return positionKey(playLine(this.fen(), played.slice(0, -1)));
     if (!o) return positionKey(this.currentFen());
     if (this.explore().length > 0) return positionKey(this.boardFen());
     if (!o.correct) return positionKey(this.currentFen());
-    const played = this.played();
     return positionKey(playLine(this.fen(), played.slice(0, -1)));
   });
   protected readonly noteLabel = computed(() => {
     const o = this.outcome();
+    const played = this.played();
     if (o && this.explore().length > 0) return 'Your notes on the position on the board';
-    if (o?.correct && this.played().length > 0)
-      return `Your notes on the position before ${o.played}`;
+    if (o && !o.correct) return `Your notes on the position where ${o.played} was refused`;
+    if (o && played.length > 0) return `Your notes on the position before ${o.played}`;
+    if (!o && this.stage() === 'replying' && played.length > 0)
+      return `Your notes on the position before ${played[played.length - 1]}`;
     return 'Your notes on this position';
   });
 
