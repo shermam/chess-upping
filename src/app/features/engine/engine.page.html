@@ -34,6 +34,27 @@
         </mat-form-field>
       </div>
 
+      <div class="awake-row">
+        <mat-slide-toggle
+          [checked]="wakeLock.enabled()"
+          (change)="wakeLock.enabled.set($event.checked)"
+          [disabled]="!wakeLock.supported"
+        >
+          Keep the computer awake while the engine, a download or an upload is running
+        </mat-slide-toggle>
+        <span class="muted small">
+          @if (!wakeLock.supported) {
+            Not supported by this browser.
+          } @else if (wakeLock.held()) {
+            Active now.
+          } @else if (wakeLock.error(); as e) {
+            Could not keep awake: {{ e }}
+          } @else {
+            Keeps the screen on while this tab is visible; a closed laptop lid still sleeps.
+          }
+        </span>
+      </div>
+
       <div class="stats">
         <div class="stat">
           <div class="value">

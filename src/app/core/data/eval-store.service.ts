@@ -35,10 +35,12 @@ export class EvalStoreService {
   private readonly firebase = inject(FirebaseService);
 
   private readonly inflight = new Map<string, Promise<PositionEval>>();
-  private uploading: Promise<void> | null = null;
+  private uploadRun: Promise<void> | null = null;
 
   readonly pendingUploads = signal(0);
   readonly storedPositions = signal(0);
+  /** True while a batch of evaluations is being pushed to Firestore. */
+  readonly uploading = signal(false);
   /** Set while uploads are paused because the Firestore write quota ran out. */
   readonly uploadPausedUntil = signal<number | null>(null);
   readonly uploadError = signal<string | null>(null);
@@ -171,10 +173,14 @@ export class EvalStoreService {
 
   /** Pushes pending evaluations to Firestore; a quota error pauses uploads for a while. */
   uploadPending(): Promise<void> {
-    if (!this.uploading) {
-      this.uploading = this.runUpload().finally(() => (this.uploading = null));
+    if (!this.uploadRun) {
+      this.uploading.set(true);
+      this.uploadRun = this.runUpload().finally(() => {
+        this.uploadRun = null;
+        this.uploading.set(false);
+      });
     }
-    return this.uploading;
+    return this.uploadRun;
   }
 
   private async runUpload(): Promise<void> {

@@ -20,6 +20,7 @@ import { LocalDbService } from './core/data/local-db.service';
 import { PositionIndexService } from './core/data/position-index.service';
 import { SyncService } from './core/data/sync.service';
 import { FirebaseService } from './core/firebase/firebase.service';
+import { WakeLockService } from './core/wake-lock/wake-lock.service';
 import { APP_VERSION } from './version.generated';
 
 @Component({
@@ -44,6 +45,7 @@ export class App {
   protected readonly profiles = inject(UserProfileService);
   protected readonly sync = inject(SyncService);
   protected readonly bulk = inject(BulkEvalService);
+  protected readonly wakeLock = inject(WakeLockService);
   private readonly store = inject(GamesStoreService);
   private readonly db = inject(LocalDbService);
   private readonly index = inject(PositionIndexService);

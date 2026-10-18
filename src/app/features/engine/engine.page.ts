@@ -6,11 +6,13 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { RouterLink } from '@angular/router';
 import { BulkEvalService } from '../../core/data/bulk-eval.service';
 import { EvalStoreService } from '../../core/data/eval-store.service';
 import { GamesStoreService } from '../../core/data/games-store.service';
 import { DEPTH_OPTIONS, EnginePoolService } from '../../core/engine/engine-pool.service';
+import { WakeLockService } from '../../core/wake-lock/wake-lock.service';
 
 @Component({
   selector: 'app-engine-page',
@@ -22,6 +24,7 @@ import { DEPTH_OPTIONS, EnginePoolService } from '../../core/engine/engine-pool.
     MatIconModule,
     MatProgressBarModule,
     MatSelectModule,
+    MatSlideToggleModule,
     RouterLink,
   ],
   templateUrl: './engine.page.html',
@@ -32,6 +35,7 @@ export class EnginePage {
   protected readonly bulk = inject(BulkEvalService);
   protected readonly pool = inject(EnginePoolService);
   protected readonly evals = inject(EvalStoreService);
+  protected readonly wakeLock = inject(WakeLockService);
   private readonly store = inject(GamesStoreService);
 
   protected readonly depthOptions = DEPTH_OPTIONS;

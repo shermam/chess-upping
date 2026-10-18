@@ -52,6 +52,10 @@ Live site: https://chess-upping.web.app
   spaced-repetition cards (slowest first); progress lives under the user's
   private `drills` subcollection. Private notes can be kept on any position
   or game (`users/{uid}/notes`).
+- **Keep awake.** While the engine, a Lichess download or an upload is
+  running, the app holds a Screen Wake Lock so the computer does not go to
+  sleep (a switch on the Engine page turns this off). The lock only works
+  while the tab is visible and cannot stop a closed laptop lid from sleeping.
 - **Firebase config** is never committed. The app fetches it at runtime from
   Hosting's reserved `/__/firebase/init.json`.
 
