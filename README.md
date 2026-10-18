@@ -59,7 +59,11 @@ Live site: https://chess-upping.web.app
   lives under the user's private `drills` subcollection. Private notes can be
   kept on any position or game (`users/{uid}/notes`); the explorer, the game
   viewer and the drill page all show the same note box, so a lesson learnt in
-  a drill can be written down on the spot.
+  a drill can be written down on the spot. The drill page steps back and
+  forth through its moves (arrows, Home and End, or the move list), and
+  through the moves that led to the drill position when every game reached
+  it by the same move order; a position reached by several move orders stops
+  the history there, and says so.
 - **Live engine.** Every board (explorer, game viewer, drills) has an engine
   switch and a choice of one to five lines. A dedicated Stockfish worker keeps
   analysing the position on screen and streams its principal variations;
