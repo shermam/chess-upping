@@ -25,8 +25,8 @@ export interface DrillCard {
   avgTimeSec: number | null;
   /** Moves of a game reaching the position, for context and links. */
   line: string[];
-  /** Mistake cards: the move the user actually played, which must be refused. */
-  played: string | null;
+  /** Mistake cards: the moves the user actually played here, all of which are refused. */
+  played: string[];
   judgement: Judgement | null;
   opening: string | null;
   gameId: string | null;
@@ -144,7 +144,7 @@ export function buildCards(
       share,
       avgTimeSec: a.timeCount > 0 ? a.timeSum / a.timeCount : null,
       line: a.line,
-      played: null,
+      played: [],
       judgement: null,
       opening: null,
       gameId: null,
@@ -184,8 +184,8 @@ export function buildReplies(
 
 /**
  * Builds cards from the mistake report: one per position where the user made
- * a mistake or blunder, the engine's best move as the reference and the move
- * actually played as the one to refuse. Repeated errors and blunders first.
+ * a mistake or blunder, the engine's best move as the reference and the moves
+ * actually played as the ones to refuse. Repeated errors and blunders first.
  */
 export function buildMistakeCards(
   mistakes: readonly Mistake[],
@@ -197,6 +197,7 @@ export function buildMistakeCards(
     const existing = byKey.get(m.keyBefore);
     if (existing) {
       existing.games++;
+      if (!existing.played.includes(m.san)) existing.played.push(m.san);
       if (m.judgement === 'blunder') existing.judgement = 'blunder';
       continue;
     }
@@ -209,9 +210,9 @@ export function buildMistakeCards(
       share: 1,
       avgTimeSec: null,
       line: m.lineBefore,
-      played: m.san,
+      played: [m.san],
       judgement: m.judgement,
-      opening: m.opening,
+      opening: m.opening === 'Unknown opening' ? null : m.opening,
       gameId: m.game.id,
       ply: m.ply,
       opponent: m.color === 'white' ? m.game.black.name : m.game.white.name,
@@ -221,4 +222,17 @@ export function buildMistakeCards(
   return [...byKey.values()].sort(
     (a, b) => b.games - a.games || weight(b) - weight(a) || a.key.localeCompare(b.key),
   );
+}
+
+/**
+ * Removes repertoire cards whose habitual move is one of the user's recorded
+ * mistakes at that position, so the two kinds of card never contradict.
+ */
+export function withoutBadHabits(
+  repertoire: readonly DrillCard[],
+  mistakes: readonly DrillCard[],
+): DrillCard[] {
+  const bad = new Map<string, readonly string[]>();
+  for (const m of mistakes) bad.set(m.key, m.played);
+  return repertoire.filter((c) => !bad.get(c.key)?.includes(c.expected));
 }

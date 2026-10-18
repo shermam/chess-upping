@@ -20,6 +20,7 @@ import { Chess, Square } from 'chess.js';
 import type { Key } from 'chessground/types';
 import { UserProfileService } from '../../core/auth/user-profile.service';
 import { EvalStoreService } from '../../core/data/eval-store.service';
+import { EnginePoolService } from '../../core/engine/engine-pool.service';
 import { GamesStoreService } from '../../core/data/games-store.service';
 import { MistakeFinderService } from '../../core/data/mistake-finder.service';
 import { PositionIndexService } from '../../core/data/position-index.service';
@@ -38,6 +39,7 @@ import {
   buildMistakeCards,
   buildReplies,
   cardStateId,
+  withoutBadHabits,
 } from './cards';
 import { DrillsService } from './drills.service';
 import { GradeResult, MAX_ACCEPTED_DROP, MoveGraderService } from './move-grader.service';
@@ -47,8 +49,8 @@ type ColorChoice = Color | 'both';
 type SourceChoice = CardKind | 'both';
 type Mode = 'single' | 'sequence';
 
-/** Where the current card stands: waiting for a move, grading it, or finished. */
-type Stage = 'answer' | 'checking' | 'done';
+/** Where the current card stands: waiting for a move, grading it, the opponent replying, or finished. */
+type Stage = 'answer' | 'checking' | 'replying' | 'done';
 
 interface Outcome {
   correct: boolean;
@@ -90,12 +92,12 @@ export class DrillsPage {
   private readonly openings = inject(OpeningsService);
   private readonly grader = inject(MoveGraderService);
   private readonly evals = inject(EvalStoreService);
+  private readonly pool = inject(EnginePoolService);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly finder = inject(MistakeFinderService);
   protected readonly drills = inject(DrillsService);
 
   protected readonly formatSeconds = formatSeconds;
-  protected readonly symbol = JUDGEMENT_SYMBOL;
   protected readonly maxDrop = MAX_ACCEPTED_DROP;
   protected readonly colorChoice = signal<ColorChoice>('both');
   protected readonly source = signal<SourceChoice>('both');
@@ -110,7 +112,7 @@ export class DrillsPage {
     return choice === 'both' ? ['white', 'black'] : [choice];
   });
 
-  private readonly repertoireCards = computed<DrillCard[]>(() => {
+  private readonly habitCards = computed<DrillCard[]>(() => {
     const link = this.profiles.profile()?.lichess;
     if (!link || !this.indexReady()) return [];
     this.index.version();
@@ -120,6 +122,14 @@ export class DrillsPage {
       colors: this.colors(),
     });
   });
+  private readonly mistakeCards = computed<DrillCard[]>(() => {
+    const report = this.finder.report();
+    return report ? buildMistakeCards(report.mistakes, this.colors()) : [];
+  });
+  /** Habits that are recorded mistakes are not drilled as habits. */
+  private readonly repertoireCards = computed<DrillCard[]>(() =>
+    withoutBadHabits(this.habitCards(), this.mistakeCards()),
+  );
   /** Habitual move by position, to continue an opening sequence. */
   private readonly repertoireByKey = computed(() => {
     const map = new Map<string, DrillCard>();
@@ -136,10 +146,6 @@ export class DrillsPage {
       minShare: 0,
       colors: this.colors(),
     });
-  });
-  private readonly mistakeCards = computed<DrillCard[]>(() => {
-    const report = this.finder.report();
-    return report ? buildMistakeCards(report.mistakes, this.colors()) : [];
   });
   /** Cards for the chosen source: mistakes first when mixed, as they are fewer and matter more. */
   private readonly cards = computed<DrillCard[]>(() => {
@@ -166,6 +172,8 @@ export class DrillsPage {
   protected readonly stage = signal<Stage>('answer');
   /** Moves played from the card position so far: user moves and automatic replies, alternating. */
   protected readonly played = signal<string[]>([]);
+  /** The user's move being graded, shown on the board until it is accepted or refused. */
+  private readonly pending = signal<string | null>(null);
   /** The move to find now: the habitual or engine move, when one is known. */
   private readonly expected = signal<string | null>(null);
   protected readonly outcome = signal<Outcome | null>(null);
@@ -187,20 +195,23 @@ export class DrillsPage {
   /** The position the user is answering from (after the moves played so far). */
   protected readonly currentFen = computed(() => playLine(this.fen(), this.played()));
   /**
-   * What the board shows: the drill position while answering; after a wrong
-   * move the engine's best move instead, so the lesson is on the board; plus
-   * anything explored afterwards.
+   * What the board shows: the drill position while answering, with the move
+   * being graded on it; after a wrong move the engine's best move instead,
+   * so the lesson is on the board; plus anything explored afterwards.
    */
   protected readonly boardFen = computed(() => {
     const o = this.outcome();
     const base = this.currentFen();
-    if (!o) return base;
+    if (!o) {
+      const pending = this.pending();
+      return pending ? playLine(base, [pending]) : base;
+    }
     const shown = o.correct ? [] : o.result.best ? [o.result.best] : [];
     return playLine(base, [...shown, ...this.explore()]);
   });
   protected readonly dests = computed(() => {
     const map = new Map<Key, Key[]>();
-    if (this.stage() === 'checking') return map;
+    if (this.stage() === 'checking' || this.stage() === 'replying') return map;
     for (const m of new Chess(this.boardFen()).moves({ verbose: true })) {
       const list = map.get(m.from as Key) ?? [];
       list.push(m.to as Key);
@@ -211,17 +222,21 @@ export class DrillsPage {
   protected readonly turn = computed<Color>(() =>
     new Chess(this.boardFen()).turn() === 'w' ? 'white' : 'black',
   );
-  /** Highlights the last automatic reply, or the best move after a wrong answer. */
+  /**
+   * Highlights the last move on the board: the move being graded, the last
+   * automatic reply, the final accepted move, or the engine's best move
+   * after a wrong answer.
+   */
   protected readonly highlight = computed<Key[] | null>(() => {
     const o = this.outcome();
-    if (o && !o.correct && o.result.best && this.explore().length === 0)
-      return squaresOf(this.currentFen(), o.result.best);
+    if (o && this.explore().length > 0) return null;
+    if (o && !o.correct) return o.result.best ? squaresOf(this.currentFen(), o.result.best) : null;
+    const pending = this.pending();
+    if (!o && pending) return squaresOf(this.currentFen(), pending);
     const played = this.played();
-    if (!o && played.length > 0 && this.stage() === 'answer') {
-      const before = playLine(this.fen(), played.slice(0, -1));
-      return squaresOf(before, played[played.length - 1]);
-    }
-    return null;
+    if (played.length === 0) return null;
+    const before = playLine(this.fen(), played.slice(0, -1));
+    return squaresOf(before, played[played.length - 1]);
   });
   protected readonly openingName = computed(() => {
     const c = this.card();
@@ -285,7 +300,10 @@ export class DrillsPage {
       const next = q.due[0] ?? q.fresh[0] ?? null;
       untracked(() => this.show(next));
     });
-    this.destroyRef.onDestroy(() => this.clearReplyTimer());
+    this.destroyRef.onDestroy(() => {
+      this.attempt++;
+      this.clearReplyTimer();
+    });
   }
 
   private show(card: DrillCard | null): void {
@@ -294,6 +312,7 @@ export class DrillsPage {
     this.card.set(card);
     this.stage.set('answer');
     this.played.set([]);
+    this.pending.set(null);
     this.expected.set(card?.expected ?? null);
     this.outcome.set(null);
     this.explore.set([]);
@@ -313,7 +332,7 @@ export class DrillsPage {
 
   protected onBoardMove({ from, to }: BoardMove): void {
     const card = this.card();
-    if (!card || this.stage() === 'checking') return;
+    if (!card || this.stage() === 'checking' || this.stage() === 'replying') return;
     if (this.outcome()) {
       // Free exploration after the drill ended.
       const san = sanOf(this.boardFen(), from, to);
@@ -325,8 +344,9 @@ export class DrillsPage {
     if (!san) return;
     this.thinkMs += Date.now() - this.startedAt;
     this.stage.set('checking');
+    this.pending.set(san);
     const attempt = this.attempt;
-    const forbidden = this.played().length === 0 ? card.played : null;
+    const forbidden = this.played().length === 0 ? card.played : [];
     void this.grader
       .grade(fen, san, this.expected(), forbidden, card.color)
       .catch((): GradeResult => ({ ok: true, reason: 'engine-approved', drop: null, best: null }))
@@ -337,6 +357,8 @@ export class DrillsPage {
   }
 
   private async onGraded(card: DrillCard, san: string, result: GradeResult): Promise<void> {
+    const before = this.currentFen();
+    this.pending.set(null);
     if (!result.ok) {
       this.finish(false, san, result);
       return;
@@ -347,8 +369,9 @@ export class DrillsPage {
       this.finish(true, san, result);
       return;
     }
+    this.stage.set('replying');
     const attempt = this.attempt;
-    const next = await this.continuation(card, this.currentFen());
+    const next = await this.continuation(card, before, san, this.currentFen());
     if (attempt !== this.attempt) return;
     if (!next) {
       this.finish(true, san, result);
@@ -365,13 +388,17 @@ export class DrillsPage {
   }
 
   /**
-   * The opponent's automatic reply from `fen` (the position after the user's
-   * move) and the move to find after it. Repertoire cards follow the user's
-   * own games (most common reply, then the habitual answer when there is
-   * one); mistake cards follow the engine's principal variation, puzzle style.
+   * The opponent's automatic reply to the user's move `san` (from `before`
+   * to `fen`) and the move to find after it. Repertoire cards follow the
+   * user's own games (most common reply, then the habitual answer when there
+   * is one); mistake cards follow the engine's line, puzzle style: the stored
+   * variation of the position when the user played its first move, else an
+   * evaluation of the new position.
    */
   private async continuation(
     card: DrillCard,
+    before: string,
+    san: string,
     fen: string,
   ): Promise<{ reply: string; expected: string | null } | null> {
     if (new Chess(fen).isGameOver()) return null;
@@ -385,15 +412,33 @@ export class DrillsPage {
         expected: this.repertoireByKey().get(positionKey(after))?.expected ?? null,
       };
     }
-    const e = (await this.evals.lookupLocal([fen])).get(positionKey(fen));
-    const pv = e?.pv ? e.pv.split(' ') : [];
-    if (pv.length < 2) return null;
-    const reply = uciToSan(fen, pv[0]);
+    let line = await this.storedLine(before);
+    if (line.length > 0 && uciToSan(before, line[0]) === san) line = line.slice(1);
+    else line = await this.engineLine(fen);
+    if (line.length < 2) return null;
+    const reply = uciToSan(fen, line[0]);
     if (!reply) return null;
     const after = playLine(fen, [reply]);
     if (new Chess(after).isGameOver()) return null;
-    const expected = uciToSan(after, pv[1]);
+    const expected = uciToSan(after, line[1]);
     return expected ? { reply, expected } : null;
+  }
+
+  /** The principal variation stored for a position, in UCI, or empty. */
+  private async storedLine(fen: string): Promise<string[]> {
+    const e = (await this.evals.lookupLocal([fen])).get(positionKey(fen));
+    return e?.pv ? e.pv.split(' ') : [];
+  }
+
+  /** The principal variation of a position, searching when it is not stored yet. */
+  private async engineLine(fen: string): Promise<string[]> {
+    try {
+      const result = await this.evals.getOrEvaluate([fen], this.pool.depth(), 'high');
+      const e = result.get(positionKey(fen));
+      return e?.pv ? e.pv.split(' ') : [];
+    } catch {
+      return [];
+    }
   }
 
   private finish(correct: boolean, played: string, result: GradeResult): void {
@@ -429,6 +474,25 @@ export class DrillsPage {
 
   protected explorerParams(card: DrillCard): { [k: string]: string } {
     return { line: card.line.join(','), color: card.color };
+  }
+
+  /** The context line of a mistake card. */
+  protected mistakePrompt(c: DrillCard): string {
+    const moves =
+      c.played.length > 1
+        ? `${c.played.slice(0, -1).join(', ')} or ${c.played[c.played.length - 1]}`
+        : c.played[0];
+    const where =
+      c.games > 1 ? `in ${c.games} games` : c.opponent ? `against ${c.opponent}` : 'in a game';
+    const what = c.judgement ? `, a ${c.judgement} (${JUDGEMENT_SYMBOL[c.judgement]})` : '';
+    return `You played ${moves} here ${where}${what}. Find a better move.`;
+  }
+
+  /** The context line of a repertoire card. */
+  protected habitPrompt(c: DrillCard): string {
+    const share = Math.round(c.share * 100);
+    const time = c.avgTimeSec !== null ? `, taking ${formatSeconds(c.avgTimeSec)} on average` : '';
+    return `You reached this position ${c.games} times and played the same move in ${share}% of them${time}.`;
   }
 
   /** Describes why a move was accepted or refused. */

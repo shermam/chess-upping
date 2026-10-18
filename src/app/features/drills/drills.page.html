@@ -3,9 +3,9 @@
     <h1>Drills</h1>
     <span class="muted">
       Positions from your own games: your habitual moves, played as fast as you can, and the
-      positions where you went wrong, where your usual move is refused. Any move the engine rates
-      about as good as the reference is accepted; spaced repetition brings each position back when
-      it is due.
+      positions where you went wrong, where the move you played is refused. Any move that costs less
+      than an inaccuracy by the engine's evaluation is accepted; spaced repetition brings each
+      position back when it is due.
     </span>
   </header>
 
@@ -69,6 +69,8 @@
   } @else if (!drills.loaded()) {
     <mat-progress-bar mode="indeterminate" />
     <p class="muted">Loading your drill history…</p>
+  } @else if (totalCards() === 0 && analysing()) {
+    <p class="muted">Building your cards…</p>
   } @else if (totalCards() === 0) {
     @if (source() === 'mistake') {
       <p class="muted">
@@ -99,7 +101,7 @@
       </div>
       <div class="side">
         <div class="kind" [class.mistake]="c.kind === 'mistake'">
-          <mat-icon>{{ c.kind === 'mistake' ? 'error' : 'repeat' }}</mat-icon>
+          <mat-icon aria-hidden="true">{{ c.kind === 'mistake' ? 'error' : 'repeat' }}</mat-icon>
           <span>{{ c.kind === 'mistake' ? 'From your mistakes' : 'From your repertoire' }}</span>
           @if (mode() === 'sequence') {
             <span class="muted"
@@ -118,31 +120,21 @@
           }
         </p>
         @if (c.kind === 'mistake') {
-          <p class="muted">
-            You played {{ c.played }} here
-            @if (c.games > 1) {
-              in {{ c.games }} games
-            } @else if (c.opponent) {
-              against {{ c.opponent }}
-            }
-            , a {{ c.judgement }} ({{ c.judgement ? symbol[c.judgement] : '' }}). Find a better
-            move.
-          </p>
+          <p class="muted">{{ mistakePrompt(c) }}</p>
         } @else {
-          <p class="muted">
-            You reached this position {{ c.games }} times and played the same move in
-            {{ c.share * 100 | number: '1.0-0' }}% of them
-            @if (c.avgTimeSec !== null) {
-              , taking {{ formatSeconds(c.avgTimeSec) }} on average
-            }
-            .
-          </p>
+          <p class="muted">{{ habitPrompt(c) }}</p>
         }
 
         @if (outcome(); as o) {
-          <div class="result" [class.correct]="o.correct" [class.wrong]="!o.correct">
+          <div
+            class="result"
+            role="status"
+            aria-live="polite"
+            [class.correct]="o.correct"
+            [class.wrong]="!o.correct"
+          >
             @if (o.correct) {
-              <mat-icon>check_circle</mat-icon>
+              <mat-icon aria-hidden="true">check_circle</mat-icon>
               <span>
                 @if (o.solved > 1) {
                   {{ o.solved }} moves in {{ formatSeconds(o.seconds) }}.
@@ -152,7 +144,7 @@
                 {{ verdict(o, c) }}
               </span>
             } @else {
-              <mat-icon>cancel</mat-icon>
+              <mat-icon aria-hidden="true">cancel</mat-icon>
               <span>{{ verdict(o, c) }}</span>
             }
           </div>
@@ -161,7 +153,7 @@
           }
           <div class="actions">
             <button matButton="filled" (click)="next()">
-              <mat-icon>arrow_forward</mat-icon> Next (Enter)
+              <mat-icon aria-hidden="true">arrow_forward</mat-icon> Next (Enter)
             </button>
             <a matButton routerLink="/" [queryParams]="explorerParams(c)">Explore this line</a>
             @if (c.gameId) {
@@ -171,7 +163,13 @@
             }
           </div>
         } @else if (stage() === 'checking') {
-          <p class="checking"><mat-icon>hourglass_top</mat-icon> Checking with the engine…</p>
+          <p class="checking" role="status" aria-live="polite">
+            <mat-icon aria-hidden="true">hourglass_top</mat-icon> Checking with the engine…
+          </p>
+        } @else if (stage() === 'replying') {
+          <p class="checking" role="status" aria-live="polite">
+            <mat-icon aria-hidden="true">check</mat-icon> Good. Your opponent replies…
+          </p>
         } @else {
           <p>
             @if (c.kind === 'mistake') {

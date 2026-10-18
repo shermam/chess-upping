@@ -50,12 +50,12 @@ Live site: https://chess-upping.web.app
   and by repeated position, each linking back to the game at that move or to
   the explorer at that line. Drills turn the user's habitual moves into
   spaced-repetition cards (slowest first) and the positions from the Mistakes
-  page into cards where the move actually played is refused. Any answer the
-  engine rates within an inaccuracy of the reference is accepted; the grader
-  looks the two positions up in the evaluation table and only searches when
-  they are new. Sequence mode plays the opponent's reply automatically (the
-  most common one from the user's games for repertoire cards, the engine's
-  line for mistakes) for up to three moves. Progress lives under the user's
+  page into cards where the moves actually played are refused. Any answer
+  that costs less than an inaccuracy by the engine's evaluation is accepted;
+  the grader looks the two positions up in the evaluation table and only
+  searches when they are new. Sequence mode plays the opponent's reply
+  automatically (the most common one from the user's games for repertoire
+  cards, the engine's line for mistakes) for up to three moves. Progress lives under the user's
   private `drills` subcollection. Private notes can be kept on any position
   or game (`users/{uid}/notes`).
 - **Live engine.** Every board (explorer, game viewer, drills) has an engine

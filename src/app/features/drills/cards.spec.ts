@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../../models/game';
 import { gameKeys } from '../../core/data/position-index.service';
-import { buildCards, buildMistakeCards, buildReplies, cardStateId } from './cards';
+import {
+  DrillCard,
+  buildCards,
+  buildMistakeCards,
+  buildReplies,
+  cardStateId,
+  withoutBadHabits,
+} from './cards';
 import { Mistake } from '../../core/data/mistake-finder.service';
 
 function game(
@@ -106,11 +113,30 @@ describe('buildMistakeCards', () => {
   it('groups by position, skips inaccuracies, and respects colour', () => {
     const cards = buildMistakeCards(mistakes, ['white', 'black']);
     expect(cards.map((c) => [c.key, c.games, c.judgement, c.expected, c.played])).toEqual([
-      ['K1', 2, 'blunder', 'Nf3', 'Qh5'],
-      ['K3', 1, 'blunder', 'Nf3', 'a4'],
+      ['K1', 2, 'blunder', 'Nf3', ['Qh5', 'Ke2']],
+      ['K3', 1, 'blunder', 'Nf3', ['a4']],
     ]);
     expect(buildMistakeCards(mistakes, ['black']).map((c) => c.key)).toEqual(['K3']);
     expect(cardStateId(cards[0])).toBe('m:K1');
     expect(cardStateId({ kind: 'repertoire', key: 'K1' })).toBe('K1');
+  });
+
+  it('drops repertoire cards whose habit is a recorded mistake', () => {
+    const mistakeCards = buildMistakeCards(mistakes, ['white', 'black']);
+    const habit = (key: string, expected: string): DrillCard => ({
+      ...mistakeCards[0],
+      kind: 'repertoire',
+      key,
+      expected,
+      played: [],
+    });
+    const kept = withoutBadHabits(
+      [habit('K1', 'Qh5'), habit('K1', 'Nf3'), habit('K9', 'Qh5')],
+      mistakeCards,
+    );
+    expect(kept.map((c) => [c.key, c.expected])).toEqual([
+      ['K1', 'Nf3'],
+      ['K9', 'Qh5'],
+    ]);
   });
 });

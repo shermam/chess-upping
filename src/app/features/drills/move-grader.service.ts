@@ -22,7 +22,8 @@ export const MAX_ACCEPTED_DROP = 10;
 /**
  * Judges a drill answer: the reference move is always right, a move the user
  * is known to have blundered with is always wrong, and anything else is
- * accepted when the engine says it costs less than an inaccuracy.
+ * accepted when, by the engine's evaluation of the position, it costs less
+ * than an inaccuracy.
  */
 @Injectable({ providedIn: 'root' })
 export class MoveGraderService {
@@ -33,12 +34,12 @@ export class MoveGraderService {
     fen: string,
     san: string,
     expected: string | null,
-    forbidden: string | null,
+    forbidden: readonly string[],
     color: Color,
   ): Promise<GradeResult> {
     if (expected !== null && san === expected)
       return { ok: true, reason: 'expected', drop: 0, best: expected };
-    if (forbidden !== null && san === forbidden) {
+    if (forbidden.includes(san)) {
       const before = await this.evaluate(fen).catch(() => null);
       return {
         ok: false,
