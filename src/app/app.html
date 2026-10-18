@@ -33,6 +33,14 @@
       </nav>
     }
     <span class="spacer"></span>
+    @if (wakeLock.held()) {
+      <mat-icon
+        class="awake"
+        matTooltip="Keeping the computer awake while work is running"
+        aria-label="Keeping the computer awake"
+        >coffee</mat-icon
+      >
+    }
     <span class="version" [matTooltip]="'Build ' + version.commit + ' · ' + version.builtAt">
       {{ version.commit }}
     </span>

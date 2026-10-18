@@ -54,3 +54,19 @@
   font: var(--mat-sys-body-small);
   margin-top: 16px;
 }
+
+.awake-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 4px 0 12px;
+}
+
+.small {
+  font: var(--mat-sys-body-small);
+}
+
+.muted {
+  color: var(--mat-sys-on-surface-variant);
+}
